@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api, getToken, setToken } from "./lib/api";
+import CameraCalibrationPage from "./pages/CameraCalibrationPage";
 import CameraDetailPage from "./pages/CameraDetailPage";
 import DashboardPage from "./pages/DashboardPage";
+import FactoryMapPage from "./pages/FactoryMapPage";
 import FloorPlanEditorPage from "./pages/FloorPlanEditorPage";
 import LoginPage from "./pages/LoginPage";
+import MultiCameraCheckPage from "./pages/MultiCameraCheckPage";
 import RegisterWizardPage from "./pages/RegisterWizardPage";
 
 export default function App() {
@@ -42,6 +45,9 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/cameras/new" element={<RegisterWizardPage />} />
         <Route path="/cameras/:id" element={<CameraDetailPage />} />
+        <Route path="/cameras/:id/calibration" element={<CameraCalibrationPage />} />
+        <Route path="/factory-map" element={<FactoryMapPage />} />
+        <Route path="/multi-camera-check" element={<MultiCameraCheckPage />} />
         <Route path="/floor-plans" element={<FloorPlanEditorPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -60,7 +66,9 @@ function TopBar({ operator, onSignOut }: { operator: string; onSignOut: () => vo
       </div>
       <nav className="topnav">
         <NavLink to="/" end>Dashboard</NavLink>
+        <NavLink to="/factory-map">Factory map</NavLink>
         <NavLink to="/floor-plans">Floor plans</NavLink>
+        <NavLink to="/multi-camera-check">Geometry check</NavLink>
       </nav>
       <div className="topbar-spacer" />
       <div className="topbar-user">

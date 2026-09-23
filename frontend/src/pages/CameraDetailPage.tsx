@@ -4,8 +4,10 @@ import { ApiError, api, mediaUrl } from "../lib/api";
 import FloorPlanCanvas from "../components/FloorPlanCanvas";
 import PreviewPanel from "../components/PreviewPanel";
 import { LastChecked, Modal, Notice, PlacementBadge, Spinner, StatusBadge, locationSummary } from "../components/ui";
+import { CalibrationBadge, METHOD_META } from "../components/calibrationUi";
 import { TestResultBody } from "./DashboardPage";
 import type { Camera, FloorPlan, TestResult } from "../lib/types";
+import type { CalibrationRevision } from "../lib/calibrationTypes";
 
 export default function CameraDetailPage() {
   const { id } = useParams();
@@ -20,6 +22,7 @@ export default function CameraDetailPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [editing, setEditing] = useState(params.get("edit") === "1");
+  const [calibration, setCalibration] = useState<CalibrationRevision | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -30,6 +33,8 @@ export default function CameraDetailPage() {
       } else {
         setPlan(null);
       }
+      const revisions = await api.listRevisions(cameraId).catch(() => []);
+      setCalibration(revisions.find((r) => r.is_active) ?? null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load this camera.");
     } finally {
@@ -81,10 +86,43 @@ export default function CameraDetailPage() {
 
       {error && <Notice tone="danger" title="Something went wrong">{error}</Notice>}
 
-      <div className="row" style={{ marginBottom: 16 }}>
-        <StatusBadge status={camera.last_test_status} />
-        <PlacementBadge camera={camera} />
-        <LastChecked camera={camera} />
+      <div className="card card-pad" style={{ marginBottom: 16 }}>
+        <div className="row">
+          <div>
+            <div className="stat-label">Connection</div>
+            <div className="row" style={{ marginTop: 4 }}>
+              <StatusBadge status={camera.last_test_status} />
+              <LastChecked camera={camera} />
+            </div>
+          </div>
+          <div style={{ width: 24 }} />
+          <div>
+            <div className="stat-label">Calibration</div>
+            <div className="row" style={{ marginTop: 4 }}>
+              <CalibrationBadge status={calibration?.status ?? "unconfigured"} />
+              {calibration && (
+                <span className="small muted">
+                  {METHOD_META[calibration.method].label} · revision {calibration.revision_number}
+                </span>
+              )}
+            </div>
+          </div>
+          <div style={{ width: 24 }} />
+          <div>
+            <div className="stat-label">Floor-plan placement</div>
+            <div className="row" style={{ marginTop: 4 }}>
+              <PlacementBadge camera={camera} />
+            </div>
+          </div>
+          <div className="grow" />
+          <Link className="btn btn-sm" to={`/cameras/${camera.id}/calibration`}>
+            Position &amp; calibration
+          </Link>
+        </div>
+        <p className="hint" style={{ marginTop: 10, marginBottom: 0 }}>
+          Reaching a camera, positioning it in the factory frame, and pinning it on a floor plan
+          are three separate things. None of them implies another.
+        </p>
       </div>
 
       {camera.last_test_status === "partial" && (
@@ -187,6 +225,53 @@ export default function CameraDetailPage() {
                 <dt>Last result</dt>
                 <dd>{camera.last_test_detail ?? <span className="faint">Never tested</span>}</dd>
               </dl>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <h2 className="grow">Factory position</h2>
+              <Link className="btn btn-sm" to={`/cameras/${camera.id}/calibration`}>Edit</Link>
+            </div>
+            <div className="card-pad">
+              {!calibration ? (
+                <p className="small muted" style={{ margin: 0 }}>
+                  Not positioned in a metric coordinate system yet. A floor-plan marker records
+                  roughly where a camera is on a drawing; a calibration records where it is in
+                  metres and where it points.
+                </p>
+              ) : (
+                <dl className="kv">
+                  <dt>Method</dt><dd>{METHOD_META[calibration.method].label}</dd>
+                  <dt>Position</dt>
+                  <dd className="mono">
+                    {calibration.position
+                      ? `${calibration.position.x.toFixed(2)}, ${calibration.position.y.toFixed(2)}, ${calibration.position.z.toFixed(2)} m`
+                      : "No pose (floor-plane calibration only)"}
+                  </dd>
+                  {calibration.rpy_deg && (
+                    <>
+                      <dt>Orientation</dt>
+                      <dd className="mono">
+                        roll {calibration.rpy_deg.roll.toFixed(1)}°,
+                        pitch {calibration.rpy_deg.pitch.toFixed(1)}°,
+                        yaw {calibration.rpy_deg.yaw.toFixed(1)}°
+                      </dd>
+                    </>
+                  )}
+                  <dt>Accuracy</dt>
+                  <dd>
+                    {calibration.latest_validation?.holdout_ground_error_m != null
+                      ? <>
+                          {calibration.latest_validation.holdout_ground_error_m.toFixed(3)} m
+                          <div className="faint small">
+                            against {calibration.latest_validation.holdout_point_count} held-out point(s)
+                          </div>
+                        </>
+                      : <span className="faint">Not independently validated</span>}
+                  </dd>
+                </dl>
+              )}
             </div>
           </div>
 

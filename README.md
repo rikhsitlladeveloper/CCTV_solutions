@@ -8,9 +8,14 @@ Everything runs on your own hardware: the database, the uploaded floor plans,
 the credential encryption key and all video processing. Nothing is sent to an
 external service.
 
-**Scope.** This tool covers registration, connection testing, preview, physical
-location and floor-plan placement. It deliberately does *not* do AI detection,
-person tracking, recognition, analytics, or floor-plane calibration.
+It also positions cameras in a shared **metric factory coordinate system**, with
+floor-plane and full-pose calibration, validation against held-out survey points,
+and a documented calibration export for downstream services.
+
+**Scope.** Registration, connection testing, preview, physical location,
+floor-plan placement, and camera geometry/calibration. It deliberately does *not*
+do AI detection, person tracking, re-identification, or analytics. Calibration is
+exported so those services can consume it.
 
 ---
 
@@ -95,7 +100,25 @@ two points and entering the real distance between them.
 ### Camera detail
 Name and location, connection status with the last test timestamp, snapshot and
 live preview, stream/profile details, the marker and direction on the plan,
-installation notes, and edit/retest actions.
+installation notes, and edit/retest actions. Connection status, factory
+calibration status and floor-plan placement are shown as three separate facts.
+
+### Factory map
+Every camera in one blank metric grid — no floor plan required. Zoom, pan, fit to
+grid or to cameras, camera markers with heading and geometric floor coverage,
+surveyed reference points, and an optional 3D view with coordinate axes and
+viewing frustums. A floor-plan image can be aligned behind the grid as a backdrop;
+doing so never moves a world coordinate.
+
+### Position & calibration
+Per camera: choose manual placement, floor-plane calibration or full pose
+recovery; import or measure intrinsics; mark surveyed reference points in the
+image; solve; validate against held-out points; test projections both ways; and
+export. Every solve is a new revision, and nothing becomes active until you say so.
+
+### Multi-camera geometry check
+Mark the same physical ground point in several cameras and compare where each
+calibration places it, in metres.
 
 ---
 
@@ -130,6 +153,24 @@ coordinates in `[0,1]`, so the viewer can be any size.
 
 **Status is never colour alone.** Every badge pairs its colour with a word and a
 glyph.
+
+**Fitting error is not accuracy.** The reprojection error of a solve says how
+well it reproduced its own input. Held-out reference points — never used to
+solve — are the only independent check, and they only speak for the area they
+cover. Numenor reports both separately and invents no confidence percentage.
+
+**A homography is not a camera pose.** Floor-plane calibration maps pixels to one
+plane. It cannot say where the camera is, and no XYZ position is fabricated from it.
+
+**Intrinsics belong to one image geometry.** A calibration is bound to the exact
+resolution, crop, rotation and lens state it was measured at. Reusing it on a
+different stream is refused rather than silently rescaled.
+
+**Geometric coverage is not visibility.** Floor footprints are where the image
+border meets the floor plane. They ignore machinery, racking, walls and people.
+
+**Consistency is not accuracy.** The multi-camera check shows whether cameras
+agree with each other. They can agree and all be wrong.
 
 ---
 
@@ -198,6 +239,16 @@ fetcher.
 | **Location** | Site → Building → Floor → Area, unique by name within the parent |
 | **FloorPlan** | floor reference, image reference, pixel dimensions, optional scale (px/metre plus the two reference points and their real distance), version, timestamps |
 | **CameraPlacement** | camera id, floor-plan id, normalized x/y, heading, optional mounting height, field-of-view angle and estimated viewing distance, review status, timestamps |
+| **CoordinateSystem** | factory world frame: name, origin description, floor plane Z, grid extent and spacing, acceptance thresholds, definition revision |
+| **WorldReferencePoint** | surveyed X/Y/Z in one frame, code, description, measurement notes, uncertainty, optional ArUco details |
+| **CameraIntrinsics** | K, distortion model and coefficients, calibrated width/height/rotation/crop, lens and zoom state, source, RMS error, calibration date, active flag |
+| **PointObservation** | reference point seen at a pixel in one camera, with the image geometry it was marked on and whether it is used for fitting or held out |
+| **CalibrationRevision** | method, status, pose (quaternion + position) and/or floor homography, pixel convention, source image geometry, solver, metrics, warnings, active flag, parent revision |
+| **ValidationResult** | fitting reprojection error, held-out ground error, point and inlier counts, thresholds used, reviewer, timestamp |
+
+Schema changes are applied by a small versioned migration runner
+(`backend/app/migrations.py`) recorded in a `schema_migrations` table, so a
+database from the first release upgrades in place rather than needing a rebuild.
 
 SQLite by default, through SQLAlchemy — point `NUMENOR_DATABASE_URL` at
 PostgreSQL if you outgrow it.
@@ -236,7 +287,39 @@ All routes require `Authorization: Bearer <token>` except `/api/health` and
 | GET | `/api/floor-plans/{id}` · `/image` · `/cameras` | Metadata, image, placed cameras |
 | PUT/DELETE | `/api/floor-plans/{id}/scale` | Set or clear the map scale |
 
+### Positioning and calibration
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET/POST | `/api/coordinate-systems` | List or create factory frames |
+| GET | `/api/coordinate-systems/conventions` | The authoritative frame/rotation conventions |
+| GET/PATCH/DELETE | `/api/coordinate-systems/{id}` | Read, edit (redefinition needs confirmation), delete |
+| GET/POST | `/api/reference-points` | Surveyed point registry |
+| GET/PATCH/DELETE | `/api/reference-points/{id}` | Read, re-measure, delete |
+| GET/POST | `/api/cameras/{id}/intrinsics` | List or import intrinsics |
+| POST | `/api/cameras/{id}/intrinsics/checkerboard` | Guided checkerboard calibration |
+| POST/DELETE | `/api/cameras/{id}/intrinsics/{iid}[/activate]` | Activate or remove |
+| GET/PUT | `/api/cameras/{id}/observations` | Image ↔ reference-point observations |
+| POST | `/api/cameras/{id}/calibration/manual` | Save an approximate pose |
+| POST | `/api/cameras/{id}/calibration/homography` | Solve a floor homography |
+| POST | `/api/cameras/{id}/calibration/pose` | Solve a full camera pose |
+| GET | `/api/cameras/{id}/calibration/revisions` | Revision history |
+| POST | `/api/cameras/{id}/calibration/revisions/{rid}/adjust` | Hand correction as a new revision |
+| POST | `/api/cameras/{id}/calibration/revisions/{rid}/activate` | Explicit activation |
+| POST | `/api/cameras/{id}/calibration/revisions/{rid}/validate` | Check against held-out points |
+| GET | `/api/cameras/{id}/calibration/export` | Documented calibration JSON |
+| POST | `/api/cameras/{id}/projection/image-to-world` | Pixel → floor position |
+| POST | `/api/cameras/{id}/projection/world-to-image` | World point → pixel |
+| GET | `/api/cameras/{id}/projection/overlay` | Reference points and a projected floor grid |
+| GET | `/api/factory-map/{system_id}` | Every camera and point in one frame |
+| GET | `/api/factory-map/{system_id}/coverage` | Geometric floor coverage |
+| POST | `/api/factory-map/check-ground-point` | Multi-camera consistency check |
+| PUT | `/api/factory-map/floor-plans/{id}/alignment` | Align a plan image into world coordinates |
+
 Interactive docs are served at `/docs` while the server is running.
+
+See the [installer guide](docs/INSTALLER-GUIDE.md) for the field workflow and the
+[export example](docs/calibration-export-example.json) for the output format.
 
 ---
 
@@ -253,9 +336,40 @@ documents each one and contains no secrets.
 ./backend/test.sh
 ```
 
-48 tests covering credential encryption and exposure, the outbound host policy,
-ONVIF discovery against a simulated device (including WS-Security digest
-verification, `XAddr` rewriting and auth failures), ffmpeg error classification,
-preview session limits and cleanup, camera CRUD, the keep-vs-clear password
-rules, verification reset on connection changes, floor-plan upload validation,
-and the review flagging that follows a plan replacement.
+145 tests. Registration and media: credential encryption and exposure, the
+outbound host policy, ONVIF discovery against a simulated device (WS-Security
+digest verification, `XAddr` rewriting, auth failures), ffmpeg error
+classification, preview session limits and cleanup, camera CRUD, keep-vs-clear
+password rules, verification reset on connection change, floor-plan upload
+validation and review flagging after a plan replacement.
+
+Geometry and calibration: camera-to-world/world-to-camera inversion,
+RPY/quaternion/matrix round-trips including gimbal lock, the yaw-vs-heading sign
+relationship, synthetic pose recovery with and without distortion, outlier
+rejection, planar ambiguity detection, degenerate point sets, homography recovery
+with held-out validation, agreement between pose projection and homography,
+parallel and behind-camera rays, polygon clipping, resolution/crop mismatch
+refusal, fisheye rejection, malformed matrices and non-finite input, revision
+persistence and explicit activation, coordinate-system redefinition protection,
+multi-camera comparison, credential-free export, and in-place schema migration
+of a first-release database.
+
+## Limitations
+
+* **The ONVIF client and RTSP media path have been exercised against a simulated
+  ONVIF device and a real RTSP server, not against every camera model.** Real
+  devices vary in their SOAP dialects.
+* **Calibration accuracy has been verified against synthetic scenes only.**
+  Recovery lands within millimetres of ground truth in simulation. Real-world
+  accuracy depends almost entirely on how well your reference points were
+  surveyed, and is measured per installation by held-out points.
+* **No fisheye support.** Fisheye calibrations are rejected rather than
+  approximated as pinhole.
+* **A floor homography is limited to one plane**, and cannot project points at
+  other heights.
+* **Floor footprints are geometric**: they ignore occlusion entirely.
+* **The 3D view needs WebGL.** Without hardware acceleration it reports the lost
+  context and directs you to the 2D grid, which needs no GPU.
+* **ArUco detection is not implemented.** The data model carries marker fields so
+  markers can assist point selection later; the manual workflow does not depend
+  on it.

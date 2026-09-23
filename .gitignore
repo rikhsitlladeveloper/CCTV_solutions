@@ -18,6 +18,7 @@ backend/secrets/
 # Node
 node_modules/
 frontend/dist/
+frontend/dist.*/
 
 # Editors / OS
 .DS_Store

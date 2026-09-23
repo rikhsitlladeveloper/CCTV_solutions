@@ -154,6 +154,17 @@ export interface CameraDraft {
   installation_description: string;
   mounting_height_m: string;
   photo: File | null;
+  /** Factory-frame positioning chosen during registration. */
+  positioning_method: "skip" | "approximate" | "calibrate_later";
+  coordinate_system_id: number | null;
+  world_x: string;
+  world_y: string;
+  world_z: string;
+  world_roll: string;
+  world_pitch: string;
+  world_yaw: string;
+  world_hfov: string;
+  world_range: string;
   placement: {
     floor_plan_id: number | null;
     norm_x: number;

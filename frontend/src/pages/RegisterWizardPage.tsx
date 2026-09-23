@@ -5,8 +5,15 @@ import FloorPlanCanvas from "../components/FloorPlanCanvas";
 import PreviewPanel from "../components/PreviewPanel";
 import { Notice, Spinner, StatusBadge } from "../components/ui";
 import type { CameraDraft, FloorPlan, Site, TestResult } from "../lib/types";
+import type { CoordinateSystem } from "../lib/calibrationTypes";
 
-const STEPS = ["Camera & connection", "Physical location", "Position & direction", "Review & save"];
+const STEPS = [
+  "Camera & connection",
+  "Physical location",
+  "Factory position",
+  "Floor-plan marker",
+  "Review & save",
+];
 
 const EMPTY_DRAFT: CameraDraft = {
   name: "", host: "", connection_type: "onvif",
@@ -19,6 +26,11 @@ const EMPTY_DRAFT: CameraDraft = {
   site: "", site_id: null, building: "", building_id: null,
   floor: "", floor_id: null, area: "", area_id: null,
   installation_description: "", mounting_height_m: "", photo: null,
+  positioning_method: "skip",
+  coordinate_system_id: null,
+  world_x: "0", world_y: "0", world_z: "4",
+  world_roll: "-90", world_pitch: "0", world_yaw: "0",
+  world_hfov: "78", world_range: "12",
   placement: null,
 };
 
@@ -82,6 +94,22 @@ export default function RegisterWizardPage() {
         try { await api.testCamera(camera.id); } catch { /* the saved status stays "not tested" */ }
       }
 
+      if (draft.positioning_method === "approximate" && draft.coordinate_system_id) {
+        try {
+          await api.saveManualPose(camera.id, {
+            coordinate_system_id: draft.coordinate_system_id,
+            x: Number(draft.world_x), y: Number(draft.world_y), z: Number(draft.world_z),
+            roll_deg: Number(draft.world_roll), pitch_deg: Number(draft.world_pitch),
+            yaw_deg: Number(draft.world_yaw),
+            approx_hfov_deg: draft.world_hfov ? Number(draft.world_hfov) : null,
+            approx_range_m: draft.world_range ? Number(draft.world_range) : null,
+            activate: true,
+          });
+        } catch {
+          // A failed placement must not lose the registered camera.
+        }
+      }
+
       if (draft.placement?.floor_plan_id) {
         await api.savePlacement(camera.id, {
           floor_plan_id: draft.placement.floor_plan_id,
@@ -132,8 +160,9 @@ export default function RegisterWizardPage() {
             <StepConnection draft={draft} set={set} test={test} setTest={setTest} />
           )}
           {step === 1 && <StepLocation draft={draft} set={set} />}
-          {step === 2 && <StepPlacement draft={draft} set={set} />}
-          {step === 3 && (
+          {step === 2 && <StepFactoryPosition draft={draft} set={set} />}
+          {step === 3 && <StepPlacement draft={draft} set={set} />}
+          {step === 4 && (
             <StepReview draft={draft} test={test} onEditStep={setStep} error={saveError} />
           )}
         </div>
@@ -150,7 +179,7 @@ export default function RegisterWizardPage() {
           {step === 1 && !step2Valid && (
             <span className="small faint">Site, building, floor and area are required.</span>
           )}
-          {step < 3 ? (
+          {step < 4 ? (
             <button className="btn btn-primary" type="button"
                     disabled={(step === 0 && !step1Valid) || (step === 1 && !step2Valid)}
                     onClick={() => setStep((s) => s + 1)}>
@@ -526,7 +555,140 @@ function ComboField({ label, id, options, selectedId, text, onSelect, onText, di
   );
 }
 
-/* ---------------- Step 3: position and viewing direction ---------------- */
+
+/* ---------------- Step 3: factory position ---------------- */
+
+function StepFactoryPosition({ draft, set }: {
+  draft: CameraDraft;
+  set: <K extends keyof CameraDraft>(k: K, v: CameraDraft[K]) => void;
+}) {
+  const [systems, setSystems] = useState<CoordinateSystem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.listCoordinateSystems()
+      .then((list) => {
+        setSystems(list);
+        if (list.length && draft.coordinate_system_id === null) {
+          set("coordinate_system_id", list[0].id);
+        }
+      })
+      .catch(() => setSystems([]))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (loading) return <Spinner label="Loading coordinate systems…" />;
+
+  return (
+    <>
+      <div className="section-title">Position in the factory coordinate system</div>
+      <p className="hint" style={{ marginTop: -4, marginBottom: 14 }}>
+        This is the metric frame — X and Y on the floor, Z up, in metres — that downstream services
+        use. It is separate from the floor-plan marker in the next step, and entirely optional now.
+      </p>
+
+      {systems.length === 0 ? (
+        <Notice tone="info" title="No coordinate system exists yet">
+          You can finish registering this camera without one. Create a frame on the Factory map
+          page afterwards, then position the camera from its Position &amp; Calibration tab.
+        </Notice>
+      ) : (
+        <>
+          <div className="field">
+            <label htmlFor="fp-cs">Coordinate system</label>
+            <select id="fp-cs" value={draft.coordinate_system_id ?? ""}
+                    onChange={(e) => set("coordinate_system_id", Number(e.target.value))}>
+              {systems.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+
+          <div className="radio-row" role="radiogroup" aria-label="Positioning method"
+               style={{ flexDirection: "column" }}>
+            <label className={`radio-card${draft.positioning_method === "skip" ? " is-selected" : ""}`}>
+              <input type="radio" name="positioning" checked={draft.positioning_method === "skip"}
+                     onChange={() => set("positioning_method", "skip")} />
+              <span>
+                <strong>Not yet</strong>
+                <span>Register the camera now and position it later. It will show as Unconfigured.</span>
+              </span>
+            </label>
+            <label className={`radio-card${draft.positioning_method === "approximate" ? " is-selected" : ""}`}>
+              <input type="radio" name="positioning" checked={draft.positioning_method === "approximate"}
+                     onChange={() => set("positioning_method", "approximate")} />
+              <span>
+                <strong>Approximate placement</strong>
+                <span>
+                  Type where the camera is and roughly where it points. Saved as
+                  <em> Approximate</em> — good for getting it on the map, not for measuring.
+                </span>
+              </span>
+            </label>
+            <label className={`radio-card${draft.positioning_method === "calibrate_later" ? " is-selected" : ""}`}>
+              <input type="radio" name="positioning" checked={draft.positioning_method === "calibrate_later"}
+                     onChange={() => set("positioning_method", "calibrate_later")} />
+              <span>
+                <strong>Calibrate properly after saving</strong>
+                <span>
+                  Go straight to the calibration workflow once the camera exists, where you mark
+                  measured reference points and solve a real pose or floor mapping.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          {draft.positioning_method === "approximate" && (
+            <>
+              <div className="section-title">Approximate pose</div>
+              <div className="field-row">
+                {([["world_x", "X (m)"], ["world_y", "Y (m)"], ["world_z", "Height Z (m)"]] as const)
+                  .map(([key, label]) => (
+                    <div className="field" key={key}>
+                      <label htmlFor={`fp-${key}`}>{label}</label>
+                      <input id={`fp-${key}`} type="number" step="0.1" value={draft[key]}
+                             onChange={(e) => set(key, e.target.value)} />
+                    </div>
+                  ))}
+              </div>
+              <div className="field-row">
+                {([["world_roll", "Roll (°)"], ["world_pitch", "Pitch (°)"], ["world_yaw", "Yaw (°)"]] as const)
+                  .map(([key, label]) => (
+                    <div className="field" key={key}>
+                      <label htmlFor={`fp-${key}`}>{label}</label>
+                      <input id={`fp-${key}`} type="number" step="1" value={draft[key]}
+                             onChange={(e) => set(key, e.target.value)} />
+                    </div>
+                  ))}
+              </div>
+              <Notice tone="info" title="What zero means here">
+                Rotation is R = Rz(yaw)·Ry(pitch)·Rx(roll) applied to the optical frame
+                (X right, Y down, Z forward). All zeros points the camera straight up at the
+                ceiling. A wall-mounted camera looking level along world +Y is roll −90°, pitch 0°,
+                yaw 0°. Yaw turns counter-clockwise from above; map heading runs clockwise.
+              </Notice>
+              <div className="field-row">
+                <div className="field">
+                  <label htmlFor="fp-hfov">Approximate horizontal FOV (°)</label>
+                  <input id="fp-hfov" type="number" step="1" value={draft.world_hfov}
+                         onChange={(e) => set("world_hfov", e.target.value)} />
+                  <span className="hint">Nominal figure for drawing. Not measured intrinsics.</span>
+                </div>
+                <div className="field">
+                  <label htmlFor="fp-range">Approximate viewing distance (m)</label>
+                  <input id="fp-range" type="number" step="1" value={draft.world_range}
+                         onChange={(e) => set("world_range", e.target.value)} />
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/* ---------------- Step 4: floor-plan marker ---------------- */
+
 
 function StepPlacement({ draft, set }: {
   draft: CameraDraft;
@@ -778,8 +940,40 @@ function StepReview({ draft, test, onEditStep, error }: {
       </dl>
 
       <div className="row" style={{ marginBottom: 4 }}>
-        <div className="section-title grow" style={{ margin: 0, border: 0 }}>Map placement</div>
+        <div className="section-title grow" style={{ margin: 0, border: 0 }}>Factory position</div>
         <button className="btn btn-sm btn-ghost" type="button" onClick={() => onEditStep(2)}>Edit</button>
+      </div>
+      {draft.positioning_method === "approximate" && draft.coordinate_system_id ? (
+        <dl className="kv" style={{ marginBottom: 18 }}>
+          <dt>Position</dt>
+          <dd className="mono">{draft.world_x}, {draft.world_y}, {draft.world_z} m</dd>
+          <dt>Orientation</dt>
+          <dd className="mono">
+            roll {draft.world_roll}°, pitch {draft.world_pitch}°, yaw {draft.world_yaw}°
+          </dd>
+          <dt>Status it will get</dt>
+          <dd>
+            <span className="badge badge-warn"><span aria-hidden="true">≈</span>Approximate</span>
+            <div className="small muted" style={{ marginTop: 4 }}>
+              Hand-entered, so it will not be treated as measured geometry.
+            </div>
+          </dd>
+        </dl>
+      ) : (
+        <div style={{ marginBottom: 18 }}>
+          <Notice tone="info" title={draft.positioning_method === "calibrate_later"
+            ? "Calibration to follow"
+            : "No factory position"}>
+            {draft.positioning_method === "calibrate_later"
+              ? "The camera will be saved as Unconfigured; open its Position & Calibration tab next to mark reference points and solve."
+              : "This camera will show as Unconfigured in the factory map until it is positioned."}
+          </Notice>
+        </div>
+      )}
+
+      <div className="row" style={{ marginBottom: 4 }}>
+        <div className="section-title grow" style={{ margin: 0, border: 0 }}>Floor-plan marker</div>
+        <button className="btn btn-sm btn-ghost" type="button" onClick={() => onEditStep(3)}>Edit</button>
       </div>
       {draft.placement ? (
         <dl className="kv">

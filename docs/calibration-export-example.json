@@ -1,0 +1,527 @@
+{
+  "format": "numenor.camera-calibration",
+  "format_version": "1.0",
+  "exported_at": "2026-09-23T13:21:34.523730+00:00",
+  "conventions": {
+    "world_frame": "Right-handed. X and Y on the factory floor, Z up. Units: metres.",
+    "camera_frame": "OpenCV optical frame. X right, Y down, Z forward along the optical axis.",
+    "authoritative_pose": "T_world_camera, a 4x4 transform mapping optical-camera coordinates into world coordinates. Stored as a normalised quaternion plus the camera centre in world metres.",
+    "rpy_convention": "R_world_camera = Rz(yaw) @ Ry(pitch) @ Rx(roll); degrees in the UI, radians internally.",
+    "zero_rotation_note": "Zero roll/pitch/yaw aligns the optical axes with the world axes, so the camera looks straight up along world +Z. It is not a default wall-mount orientation.",
+    "map_heading": "0 degrees points to world +Y (top of the map) and increases clockwise.",
+    "yaw_vs_heading": "Yaw is a right-handed rotation about world +Z, so seen from above it increases counter-clockwise. Map heading increases clockwise. The two therefore run in opposite directions: for a level camera, heading = (-yaw) mod 360.",
+    "floor_plane": "Z = 0 unless a different plane height is given explicitly.",
+    "opengl_note": "Graphics engines look down -Z with +Y up. Converting an optical pose for three.js requires R_gl = R_world_camera @ diag(1, -1, -1)."
+  },
+  "coordinate_system": {
+    "id": 1,
+    "name": "Demo Plant (synthetic)",
+    "origin_description": "SYNTHETIC. Origin at the inside corner of columns A1/B1 at floor level. X runs east along the packaging aisle, Y runs north, Z is up.",
+    "definition_revision": 1,
+    "units": "metres",
+    "floor_plane_z": 0.0
+  },
+  "camera": {
+    "id": 1,
+    "name": "Demo Packaging North",
+    "manufacturer": "Synthetic Optics",
+    "model": "DEMO-1",
+    "location": {
+      "site": "Demo Plant (synthetic)",
+      "building": "Hall 1 (synthetic)",
+      "floor": "Ground Floor",
+      "area": "Packaging"
+    }
+  },
+  "calibration": {
+    "revision_id": 1,
+    "revision_number": 1,
+    "method": "pnp",
+    "status": "validated",
+    "solver": "solvePnPRansac(ITERATIVE) + refineLM",
+    "is_active": true,
+    "created_at": "2026-09-23T13:04:41.467232",
+    "activated_at": "2026-09-23T13:04:41.465565",
+    "pixel_convention": "raw",
+    "distortion_corrected": true,
+    "source_image": {
+      "width": 1920,
+      "height": 1080
+    },
+    "plane_z": 0.0,
+    "caveats": [],
+    "pose": {
+      "T_world_camera": [
+        [
+          0.6691785287835483,
+          -0.2680107830264168,
+          0.6930875246292151,
+          2.003748078922333
+        ],
+        [
+          -0.7431016658438073,
+          -0.24147993846700033,
+          0.624089219213193,
+          0.9938922056085501
+        ],
+        [
+          0.00010409248003528937,
+          -0.9326615996702885,
+          -0.3607524492851226,
+          5.20490818046149
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "position_m": {
+        "x": 2.003748078922333,
+        "y": 0.9938922056085501,
+        "z": 5.20490818046149
+      },
+      "quaternion_wxyz": [
+        0.5164654250362325,
+        -0.7535600368477073,
+        0.33544521983275233,
+        -0.22997225941313518
+      ],
+      "rpy_deg": {
+        "roll": -111.14641381631141,
+        "pitch": -0.0059640597958422045,
+        "yaw": -47.99630483852572
+      },
+      "map_heading_deg": 47.99861173008717
+    },
+    "intrinsics": {
+      "model": "pinhole",
+      "camera_matrix": [
+        [
+          1380.0,
+          0.0,
+          958.0
+        ],
+        [
+          0.0,
+          1378.0,
+          543.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "distortion_coefficients": [
+        -0.284,
+        0.083,
+        0.0006,
+        -0.0004,
+        -0.011
+      ],
+      "image_width": 1920,
+      "image_height": 1080,
+      "image_rotation_deg": 0,
+      "crop": null,
+      "geometry_key": "1920x1080@rot0/crop:full",
+      "source": "checkerboard",
+      "notes": "SYNTHETIC DEMO DATA. Generated from known ground-truth geometry, not measured from real hardware. Accuracy figures here describe the simulation only.",
+      "metadata": {
+        "id": 1,
+        "label": "Synthetic checkerboard calibration",
+        "calibrated_at": "2026-09-23T13:04:41.459301"
+      },
+      "rms_reprojection_error_px": 0.21,
+      "lens": "Synthetic 4 mm fixed",
+      "zoom_state": null
+    },
+    "metrics": {
+      "method": "solvepnp",
+      "solver": "solvePnPRansac(ITERATIVE) + refineLM",
+      "position_m": {
+        "x": 2.003748078922333,
+        "y": 0.9938922056085501,
+        "z": 5.20490818046149
+      },
+      "rpy_deg": {
+        "roll": -111.14641381631137,
+        "pitch": -0.005964059795832661,
+        "yaw": -47.9963048385257
+      },
+      "quaternion_wxyz": [
+        0.5164654250362328,
+        -0.7535600368477072,
+        0.3354452198327523,
+        -0.22997225941313512
+      ],
+      "T_world_camera": [
+        [
+          0.6691785287835483,
+          -0.2680107830264166,
+          0.6930875246292149,
+          2.003748078922333
+        ],
+        [
+          -0.7431016658438071,
+          -0.24147993846699975,
+          0.624089219213193,
+          0.9938922056085501
+        ],
+        [
+          0.0001040924800351228,
+          -0.9326615996702884,
+          -0.360752449285122,
+          5.20490818046149
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "map_heading_deg": 47.99861173008716,
+      "pixel_convention": "raw",
+      "image_width": 1920,
+      "image_height": 1080,
+      "inlier_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "outlier_indices": [],
+      "reprojection_errors_px": [
+        0.5403,
+        0.6713,
+        0.7611,
+        0.1128,
+        0.1087,
+        0.4443,
+        0.3812,
+        0.3437
+      ],
+      "mean_reprojection_error_px": 0.4204,
+      "max_reprojection_error_px": 0.7611,
+      "point_spread": {
+        "world": {
+          "count": 8,
+          "bounds": {
+            "min": [
+              7.0,
+              2.0
+            ],
+            "max": [
+              22.0,
+              20.0
+            ]
+          },
+          "extent": [
+            15.0,
+            18.0
+          ],
+          "collinearity_ratio": 0.7684
+        },
+        "image": {
+          "count": 8,
+          "bounds": {
+            "min": [
+              480.70199424106005,
+              291.0215511143756
+            ],
+            "max": [
+              1870.981159764047,
+              850.807893638327
+            ]
+          },
+          "extent": [
+            1390.2791655229871,
+            559.7863425239514
+          ],
+          "collinearity_ratio": 0.4096
+        }
+      },
+      "planar_points": true,
+      "ambiguity_note": "All reference points lie on one plane. Planar pose recovery has a well-known two-solution ambiguity: a mirrored pose can reproject almost identically. The solution was chosen by reprojection error and by requiring every point to sit in front of the camera, but adding points off the plane (different heights) is the only way to remove the ambiguity properly.",
+      "warnings": [
+        "All reference points lie on one plane. Planar pose recovery has a well-known two-solution ambiguity: a mirrored pose can reproject almost identically. The solution was chosen by reprojection error and by requiring every point to sit in front of the camera, but adding points off the plane (different heights) is the only way to remove the ambiguity properly."
+      ]
+    },
+    "warnings": [
+      "All reference points lie on one plane. Planar pose recovery has a well-known two-solution ambiguity: a mirrored pose can reproject almost identically. The solution was chosen by reprojection error and by requiring every point to sit in front of the camera, but adding points off the plane (different heights) is the only way to remove the ambiguity properly.",
+      "SYNTHETIC DEMO DATA. Generated from known ground-truth geometry, not measured from real hardware. Accuracy figures here describe the simulation only."
+    ],
+    "validation": {
+      "passed": true,
+      "fit_reprojection_error_px": 0.4204,
+      "holdout_ground_error_m": 0.008201424586582122,
+      "holdout_max_error_m": 0.010792209156837802,
+      "holdout_point_count": 4,
+      "fit_point_count": 8,
+      "inlier_count": 8,
+      "outlier_count": 0,
+      "reviewer": "operator",
+      "validated_at": "2026-09-23T13:07:19.540765",
+      "thresholds": {
+        "max_reprojection_error_px": 3.0,
+        "max_ground_error_m": 0.25,
+        "min_reference_points": 6
+      },
+      "note": "Fitting error and held-out error mean different things; see conventions and limitations."
+    }
+  },
+  "limitations": [
+    "Geometry only. This file describes where a camera is and how it projects; it makes no claim about detection, tracking or identity.",
+    "A calibration is valid only for the exact image geometry recorded under source_image. Re-calibrate after any change of resolution, crop, rotation, lens or zoom.",
+    "Accuracy figures apply to the area the reference points cover, not the whole view."
+  ],
+  "reference_points": [
+    {
+      "id": 2,
+      "code": "RP-02",
+      "name": "Column A2 base (synthetic)",
+      "world_m": [
+        12.0,
+        2.0,
+        0.0
+      ],
+      "pixel": [
+        1731.1031100242237,
+        794.2071672327154
+      ],
+      "role": "fit",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 3,
+      "code": "RP-03",
+      "name": "Column A3 base (synthetic)",
+      "world_m": [
+        22.0,
+        2.0,
+        0.0
+      ],
+      "pixel": [
+        1870.981159764047,
+        489.94856726265755
+      ],
+      "role": "fit",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 5,
+      "code": "RP-05",
+      "name": "Column B2 base (synthetic)",
+      "world_m": [
+        12.0,
+        12.0,
+        0.0
+      ],
+      "pixel": [
+        827.6750366847606,
+        500.12937849765075
+      ],
+      "role": "fit",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 6,
+      "code": "RP-06",
+      "name": "Column B3 base (synthetic)",
+      "world_m": [
+        22.0,
+        12.0,
+        0.0
+      ],
+      "pixel": [
+        1268.8896046383338,
+        354.24533171314425
+      ],
+      "role": "fit",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 8,
+      "code": "RP-08",
+      "name": "Column C2 base (synthetic)",
+      "world_m": [
+        12.0,
+        20.0,
+        0.0
+      ],
+      "pixel": [
+        480.70199424106005,
+        388.4865227689917
+      ],
+      "role": "fit",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 9,
+      "code": "RP-09",
+      "name": "Column C3 base (synthetic)",
+      "world_m": [
+        22.0,
+        20.0,
+        0.0
+      ],
+      "pixel": [
+        920.796185876929,
+        291.0215511143756
+      ],
+      "role": "fit",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 10,
+      "code": "RP-10",
+      "name": "Floor marker mid-aisle (synthetic)",
+      "world_m": [
+        7.0,
+        7.0,
+        0.0
+      ],
+      "pixel": [
+        790.9097815086509,
+        850.807893638327
+      ],
+      "role": "fit",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 11,
+      "code": "RP-11",
+      "name": "Floor marker dispatch (synthetic)",
+      "world_m": [
+        17.0,
+        16.0,
+        0.0
+      ],
+      "pixel": [
+        887.1303085583282,
+        366.753040588012
+      ],
+      "role": "fit",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 12,
+      "code": "RP-12",
+      "name": "Column B2 bracket (synthetic)",
+      "world_m": [
+        12.0,
+        12.0,
+        2.4
+      ],
+      "pixel": [
+        821.2908109879198,
+        292.8824667443978
+      ],
+      "role": "holdout",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 13,
+      "code": "RP-13",
+      "name": "Column A2 bracket (synthetic)",
+      "world_m": [
+        12.0,
+        2.0,
+        2.1
+      ],
+      "pixel": [
+        1792.9765254110764,
+        539.354138417257
+      ],
+      "role": "holdout",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 14,
+      "code": "RP-14",
+      "name": "Column C2 bracket (synthetic)",
+      "world_m": [
+        12.0,
+        20.0,
+        2.25
+      ],
+      "pixel": [
+        467.6248864201644,
+        246.03385375758745
+      ],
+      "role": "holdout",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    },
+    {
+      "id": 15,
+      "code": "RP-15",
+      "name": "Rail top, mid-aisle (synthetic)",
+      "world_m": [
+        7.0,
+        7.0,
+        1.6
+      ],
+      "pixel": [
+        778.2377506719744,
+        635.2742854032246
+      ],
+      "role": "holdout",
+      "observed_at_image": [
+        1920,
+        1080
+      ],
+      "uncertainty_m": 0.0
+    }
+  ],
+  "_note": "Example export produced from Numenor's synthetic demo factory. The geometry is real output from the real solvers, but the camera does not exist and the accuracy figures describe the simulation, not any hardware."
+}

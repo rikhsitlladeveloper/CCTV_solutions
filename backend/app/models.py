@@ -113,6 +113,18 @@ class FloorPlan(Base):
     scale_point_b_y: Mapped[float | None] = mapped_column(Float, nullable=True)
     scale_distance_m: Mapped[float | None] = mapped_column(Float, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
+
+    # Optional placement of this image inside a factory world frame, so it can be
+    # drawn as a backdrop behind metric camera positions. World coordinates are
+    # never derived from the image: this only positions the picture.
+    world_coordinate_system_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coordinate_systems.id", ondelete="SET NULL"), nullable=True
+    )
+    world_metres_per_pixel: Mapped[float | None] = mapped_column(Float, nullable=True)
+    world_origin_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    world_origin_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    world_rotation_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     floor: Mapped[Floor] = relationship(back_populates="floor_plan")
@@ -165,10 +177,35 @@ class Camera(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
+    # Which factory frame this camera is positioned in. Changing it invalidates
+    # any calibration recorded against the previous frame.
+    coordinate_system_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coordinate_systems.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     area: Mapped[Area | None] = relationship(back_populates="cameras")
     placement: Mapped["CameraPlacement | None"] = relationship(
         back_populates="camera", cascade="all, delete-orphan", uselist=False
     )
+    coordinate_system: Mapped["CoordinateSystem | None"] = relationship()
+    intrinsics_sets: Mapped[list["CameraIntrinsics"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan", order_by="CameraIntrinsics.created_at"
+    )
+    observations: Mapped[list["PointObservation"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan"
+    )
+    calibration_revisions: Mapped[list["CalibrationRevision"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan",
+        order_by="CalibrationRevision.revision_number",
+    )
+
+    @property
+    def active_intrinsics(self) -> "CameraIntrinsics | None":
+        return next((i for i in self.intrinsics_sets if i.is_active), None)
+
+    @property
+    def active_calibration(self) -> "CalibrationRevision | None":
+        return next((r for r in self.calibration_revisions if r.is_active), None)
 
 
 class CameraPlacement(Base):
@@ -196,3 +233,272 @@ class CameraPlacement(Base):
 
     camera: Mapped[Camera] = relationship(back_populates="placement")
     floor_plan: Mapped[FloorPlan] = relationship(back_populates="placements")
+
+
+# =====================================================================
+# Positioning and calibration
+# =====================================================================
+#
+# Three notions of "verified" are kept apart and never conflated:
+#
+#   Camera.last_test_status            - the backend reached the device.
+#   CameraPlacement.review_status      - a marker was confirmed on a floor plan.
+#   CalibrationRevision.status         - the geometry was solved and validated.
+#
+# A camera can be online and uncalibrated, or calibrated and unreachable.
+
+
+class CalibrationMethod(str, enum.Enum):
+    manual = "manual"                 # typed or dragged; approximate by definition
+    homography = "homography"         # image -> floor plane only, no camera pose
+    pnp = "pnp"                       # full 6-DoF pose from solvePnP
+
+
+class CalibrationStatus(str, enum.Enum):
+    unconfigured = "unconfigured"
+    approximate = "approximate"
+    calibrated_unvalidated = "calibrated_unvalidated"
+    validated = "validated"
+    needs_recalibration = "needs_recalibration"
+
+
+class PixelConvention(str, enum.Enum):
+    raw = "raw"                       # distortion present in the pixels
+    undistorted = "undistorted"       # pixels already undistorted with the stored K
+
+
+class ObservationRole(str, enum.Enum):
+    fit = "fit"                       # used to solve
+    holdout = "holdout"               # reserved for independent validation
+
+
+class CoordinateSystem(Base):
+    """A factory world frame. Right-handed, X/Y on the floor, Z up, metres."""
+
+    __tablename__ = "coordinate_systems"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    origin_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin_photo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    floor_plane_z: Mapped[float] = mapped_column(Float, default=0.0)
+    grid_min_x: Mapped[float] = mapped_column(Float, default=-10.0)
+    grid_max_x: Mapped[float] = mapped_column(Float, default=60.0)
+    grid_min_y: Mapped[float] = mapped_column(Float, default=-10.0)
+    grid_max_y: Mapped[float] = mapped_column(Float, default=60.0)
+    grid_spacing_m: Mapped[float] = mapped_column(Float, default=1.0)
+
+    # Installer-configurable acceptance thresholds.
+    max_reprojection_error_px: Mapped[float] = mapped_column(Float, default=3.0)
+    max_ground_error_m: Mapped[float] = mapped_column(Float, default=0.25)
+    min_reference_points: Mapped[int] = mapped_column(Integer, default=6)
+
+    # Bumped whenever the frame's physical meaning is redefined. Calibrations
+    # recorded against an older definition are flagged rather than reinterpreted.
+    definition_revision: Mapped[int] = mapped_column(Integer, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    site: Mapped["Site | None"] = relationship()
+    reference_points: Mapped[list["WorldReferencePoint"]] = relationship(
+        back_populates="coordinate_system", cascade="all, delete-orphan", order_by="WorldReferencePoint.name"
+    )
+
+
+class WorldReferencePoint(Base):
+    """A surveyed point in a factory frame, reusable across cameras."""
+
+    __tablename__ = "world_reference_points"
+    __table_args__ = (UniqueConstraint("coordinate_system_id", "code", name="uq_refpoint_code"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    coordinate_system_id: Mapped[int] = mapped_column(
+        ForeignKey("coordinate_systems.id", ondelete="CASCADE"), index=True
+    )
+    code: Mapped[str] = mapped_column(String(60))
+    name: Mapped[str] = mapped_column(String(160))
+    x: Mapped[float] = mapped_column(Float)
+    y: Mapped[float] = mapped_column(Float)
+    z: Mapped[float] = mapped_column(Float, default=0.0)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    measurement_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    uncertainty_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    photo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Optional ArUco assistance. A marker ID alone fixes nothing in the world;
+    # the surveyed XYZ above remains the authority.
+    aruco_dictionary: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    aruco_marker_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    aruco_marker_size_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aruco_corner_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    coordinate_system: Mapped[CoordinateSystem] = relationship(back_populates="reference_points")
+    observations: Mapped[list["PointObservation"]] = relationship(
+        back_populates="reference_point", cascade="all, delete-orphan"
+    )
+
+
+class CameraIntrinsics(Base):
+    """A pinhole calibration bound to one exact image geometry."""
+
+    __tablename__ = "camera_intrinsics"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(160), default="Imported calibration")
+    model: Mapped[str] = mapped_column(String(40), default="pinhole")
+    camera_matrix_json: Mapped[str] = mapped_column(Text)       # 3x3 row-major
+    distortion_json: Mapped[str] = mapped_column(Text)          # list of coefficients
+
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    image_rotation_deg: Mapped[int] = mapped_column(Integer, default=0)
+    crop_json: Mapped[str | None] = mapped_column(Text, nullable=True)   # [x, y, w, h]
+
+    lens_description: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    zoom_state: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    source: Mapped[str] = mapped_column(String(40), default="import")    # import | checkerboard | approximate_fov
+    rms_reprojection_error_px: Mapped[float | None] = mapped_column(Float, nullable=True)
+    view_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quality_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    calibrated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    camera: Mapped["Camera"] = relationship(back_populates="intrinsics_sets")
+
+
+class PointObservation(Base):
+    """A reference point seen at a pixel location in one camera's image."""
+
+    __tablename__ = "point_observations"
+    __table_args__ = (
+        UniqueConstraint("camera_id", "reference_point_id", name="uq_observation_per_camera_point"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
+    reference_point_id: Mapped[int] = mapped_column(
+        ForeignKey("world_reference_points.id", ondelete="CASCADE"), index=True
+    )
+    pixel_u: Mapped[float] = mapped_column(Float)
+    pixel_v: Mapped[float] = mapped_column(Float)
+    # The image geometry the click was made on; a later stream change invalidates it.
+    image_width: Mapped[int] = mapped_column(Integer)
+    image_height: Mapped[int] = mapped_column(Integer)
+    role: Mapped[ObservationRole] = mapped_column(
+        Enum(ObservationRole, native_enum=False), default=ObservationRole.fit
+    )
+    source: Mapped[str] = mapped_column(String(30), default="manual")   # manual | aruco
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    camera: Mapped["Camera"] = relationship(back_populates="observations")
+    reference_point: Mapped[WorldReferencePoint] = relationship(back_populates="observations")
+
+
+class CalibrationRevision(Base):
+    """One attempt at positioning a camera. Revisions are never overwritten.
+
+    Only one revision per camera is active at a time, and activation is always an
+    explicit step so a fresh solve cannot silently replace a working calibration.
+    """
+
+    __tablename__ = "calibration_revisions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
+    coordinate_system_id: Mapped[int] = mapped_column(
+        ForeignKey("coordinate_systems.id", ondelete="CASCADE"), index=True
+    )
+    coordinate_system_revision: Mapped[int] = mapped_column(Integer, default=1)
+    revision_number: Mapped[int] = mapped_column(Integer, default=1)
+    parent_revision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("calibration_revisions.id", ondelete="SET NULL"), nullable=True
+    )
+
+    method: Mapped[CalibrationMethod] = mapped_column(Enum(CalibrationMethod, native_enum=False))
+    status: Mapped[CalibrationStatus] = mapped_column(
+        Enum(CalibrationStatus, native_enum=False), default=CalibrationStatus.approximate
+    )
+
+    # Pose (manual or PnP). Quaternion is authoritative; RPY is a view of it.
+    position_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    position_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    position_z: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quat_w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quat_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quat_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quat_z: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Floor homography (homography method only).
+    homography_json: Mapped[str | None] = mapped_column(Text, nullable=True)       # image -> floor
+    homography_inverse_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plane_z: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Conventions and provenance, stored with every result.
+    pixel_convention: Mapped[PixelConvention] = mapped_column(
+        Enum(PixelConvention, native_enum=False), default=PixelConvention.raw
+    )
+    distortion_corrected: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    intrinsics_id: Mapped[int | None] = mapped_column(
+        ForeignKey("camera_intrinsics.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Approximate-only hints, never presented as measured intrinsics.
+    approx_hfov_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    approx_vfov_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    approx_range_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    solver: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    metrics_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warnings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    camera: Mapped["Camera"] = relationship(back_populates="calibration_revisions")
+    coordinate_system: Mapped[CoordinateSystem] = relationship()
+    intrinsics: Mapped[CameraIntrinsics | None] = relationship()
+    validations: Mapped[list["ValidationResult"]] = relationship(
+        back_populates="revision", cascade="all, delete-orphan", order_by="ValidationResult.created_at"
+    )
+
+
+class ValidationResult(Base):
+    """An independent check of a revision against held-out reference points."""
+
+    __tablename__ = "validation_results"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    revision_id: Mapped[int] = mapped_column(
+        ForeignKey("calibration_revisions.id", ondelete="CASCADE"), index=True
+    )
+    # Fitting error: how well the solve reproduced its own input. Not evidence
+    # of real-world accuracy on its own.
+    fit_reprojection_error_px: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Held-out error: measured against points the solver never saw.
+    holdout_ground_error_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    holdout_max_error_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    holdout_point_count: Mapped[int] = mapped_column(Integer, default=0)
+    fit_point_count: Mapped[int] = mapped_column(Integer, default=0)
+    inlier_count: Mapped[int] = mapped_column(Integer, default=0)
+    outlier_count: Mapped[int] = mapped_column(Integer, default=0)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    thresholds_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    revision: Mapped[CalibrationRevision] = relationship(back_populates="validations")

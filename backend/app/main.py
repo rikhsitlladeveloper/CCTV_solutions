@@ -10,7 +10,10 @@ import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+import math
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,7 +22,9 @@ from . import config
 from .db import init_db
 from .media import preview_manager
 from .netguard import HostNotAllowed
-from .routers import auth, cameras, floorplans, locations, preview
+from .routers import (
+    auth, calibration, cameras, coordinates, factorymap, floorplans, locations, preview,
+)
 from .security import ensure_operator
 
 logging.basicConfig(
@@ -59,7 +64,9 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "di
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     config.ensure_dirs()
-    init_db()
+    applied = init_db()
+    if applied:
+        log.info("Database migrations applied: %s", "; ".join(applied))
     username, generated = ensure_operator()
     if generated:
         log.warning(
@@ -95,11 +102,40 @@ async def _host_not_allowed(_, exc: HostNotAllowed) -> JSONResponse:
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
+def _json_safe(value):
+    """Make a validation-error payload serialisable.
+
+    Pydantic echoes the offending input back in its error detail. When that input
+    is NaN or infinity - exactly what the geometry endpoints must reject - the
+    echo itself cannot be encoded as JSON, and the clean 422 turns into a 500.
+    Non-finite numbers are replaced by their text form so the caller still sees
+    what was wrong.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else repr(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, bool)) or value is None:
+        return value
+    return str(value)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": _json_safe(exc.errors())})
+
+
 app.include_router(auth.router)
 app.include_router(locations.router)
 app.include_router(cameras.router)
 app.include_router(floorplans.router)
 app.include_router(preview.router)
+app.include_router(coordinates.router)
+app.include_router(coordinates.points_router)
+app.include_router(calibration.router)
+app.include_router(factorymap.router)
 
 
 @app.get("/api/health")

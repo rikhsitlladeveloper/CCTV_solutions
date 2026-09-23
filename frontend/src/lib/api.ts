@@ -1,6 +1,10 @@
 import type {
   Area, Camera, CameraSummary, FloorPlan, PreviewSession, Site, TestResult,
 } from "./types";
+import type {
+  CalibrationRevision, CameraIntrinsics, Conventions, CoordinateSystem, FactoryMap,
+  GroundCheckResult, Observation, ProjectionResult, ReferencePoint, ValidationDetail,
+} from "./calibrationTypes";
 
 const TOKEN_KEY = "numenor.token";
 
@@ -130,6 +134,109 @@ export const api = {
   setScale: (id: number, body: Record<string, number>) =>
     request<FloorPlan>(`/api/floor-plans/${id}/scale`, { method: "PUT", body: JSON.stringify(body) }),
   clearScale: (id: number) => request<FloorPlan>(`/api/floor-plans/${id}/scale`, { method: "DELETE" }),
+
+  // coordinate systems
+  conventions: () =>
+    request<{ conventions: Conventions }>("/api/coordinate-systems/conventions"),
+  listCoordinateSystems: () => request<CoordinateSystem[]>("/api/coordinate-systems"),
+  getCoordinateSystem: (id: number) => request<CoordinateSystem>(`/api/coordinate-systems/${id}`),
+  createCoordinateSystem: (body: Record<string, unknown>) =>
+    request<CoordinateSystem>("/api/coordinate-systems", { method: "POST", body: JSON.stringify(body) }),
+  updateCoordinateSystem: (id: number, body: Record<string, unknown>) =>
+    request<CoordinateSystem>(`/api/coordinate-systems/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteCoordinateSystem: (id: number) =>
+    request<void>(`/api/coordinate-systems/${id}`, { method: "DELETE" }),
+
+  // reference points
+  listReferencePoints: (coordinateSystemId?: number) =>
+    request<ReferencePoint[]>(
+      `/api/reference-points${coordinateSystemId ? `?coordinate_system_id=${coordinateSystemId}` : ""}`),
+  createReferencePoint: (body: Record<string, unknown>) =>
+    request<ReferencePoint>("/api/reference-points", { method: "POST", body: JSON.stringify(body) }),
+  updateReferencePoint: (id: number, body: Record<string, unknown>) =>
+    request<ReferencePoint>(`/api/reference-points/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteReferencePoint: (id: number) =>
+    request<void>(`/api/reference-points/${id}`, { method: "DELETE" }),
+
+  // intrinsics
+  listIntrinsics: (cameraId: number) =>
+    request<CameraIntrinsics[]>(`/api/cameras/${cameraId}/intrinsics`),
+  importIntrinsics: (cameraId: number, body: Record<string, unknown>) =>
+    request<CameraIntrinsics>(`/api/cameras/${cameraId}/intrinsics`,
+      { method: "POST", body: JSON.stringify(body) }),
+  activateIntrinsics: (cameraId: number, intrinsicsId: number) =>
+    request<CameraIntrinsics>(`/api/cameras/${cameraId}/intrinsics/${intrinsicsId}/activate`,
+      { method: "POST" }),
+  deleteIntrinsics: (cameraId: number, intrinsicsId: number) =>
+    request<void>(`/api/cameras/${cameraId}/intrinsics/${intrinsicsId}`, { method: "DELETE" }),
+  checkerboardCalibrate: (cameraId: number, params: Record<string, string | number | boolean>,
+                          files: File[]) => {
+    const fd = new FormData();
+    files.forEach((f) => fd.append("files", f));
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => q.set(k, String(v)));
+    return request<Record<string, unknown>>(
+      `/api/cameras/${cameraId}/intrinsics/checkerboard?${q}`, { method: "POST", body: fd });
+  },
+
+  // observations
+  listObservations: (cameraId: number) =>
+    request<Observation[]>(`/api/cameras/${cameraId}/observations`),
+  saveObservations: (cameraId: number, body: Record<string, unknown>) =>
+    request<Observation[]>(`/api/cameras/${cameraId}/observations`,
+      { method: "PUT", body: JSON.stringify(body) }),
+  deleteObservation: (cameraId: number, observationId: number) =>
+    request<void>(`/api/cameras/${cameraId}/observations/${observationId}`, { method: "DELETE" }),
+
+  // calibration
+  listRevisions: (cameraId: number) =>
+    request<CalibrationRevision[]>(`/api/cameras/${cameraId}/calibration/revisions`),
+  saveManualPose: (cameraId: number, body: Record<string, unknown>) =>
+    request<CalibrationRevision>(`/api/cameras/${cameraId}/calibration/manual`,
+      { method: "POST", body: JSON.stringify(body) }),
+  solveHomography: (cameraId: number, body: Record<string, unknown>) =>
+    request<CalibrationRevision>(`/api/cameras/${cameraId}/calibration/homography`,
+      { method: "POST", body: JSON.stringify(body) }),
+  solvePose: (cameraId: number, body: Record<string, unknown>) =>
+    request<CalibrationRevision>(`/api/cameras/${cameraId}/calibration/pose`,
+      { method: "POST", body: JSON.stringify(body) }),
+  adjustPose: (cameraId: number, revisionId: number, body: Record<string, unknown>) =>
+    request<CalibrationRevision>(
+      `/api/cameras/${cameraId}/calibration/revisions/${revisionId}/adjust`,
+      { method: "POST", body: JSON.stringify(body) }),
+  activateRevision: (cameraId: number, revisionId: number) =>
+    request<CalibrationRevision>(
+      `/api/cameras/${cameraId}/calibration/revisions/${revisionId}/activate`,
+      { method: "POST", body: JSON.stringify({ confirm: true }) }),
+  validateRevision: (cameraId: number, revisionId: number, body: Record<string, unknown> = {}) =>
+    request<{ validation: ValidationDetail; revision: CalibrationRevision }>(
+      `/api/cameras/${cameraId}/calibration/revisions/${revisionId}/validate`,
+      { method: "POST", body: JSON.stringify(body) }),
+  exportCalibration: (cameraId: number, revisionId?: number) =>
+    request<Record<string, unknown>>(
+      `/api/cameras/${cameraId}/calibration/export${revisionId ? `?revision_id=${revisionId}` : ""}`),
+
+  // projection
+  imageToWorld: (cameraId: number, body: Record<string, unknown>) =>
+    request<ProjectionResult>(`/api/cameras/${cameraId}/projection/image-to-world`,
+      { method: "POST", body: JSON.stringify(body) }),
+  worldToImage: (cameraId: number, body: Record<string, unknown>) =>
+    request<ProjectionResult>(`/api/cameras/${cameraId}/projection/world-to-image`,
+      { method: "POST", body: JSON.stringify(body) }),
+  projectionOverlay: (cameraId: number, spacing = 2, extent = 20) =>
+    request<Record<string, unknown>>(
+      `/api/cameras/${cameraId}/projection/overlay?grid_spacing_m=${spacing}&extent_m=${extent}`),
+
+  // factory map
+  factoryMap: (systemId: number) => request<FactoryMap>(`/api/factory-map/${systemId}`),
+  coverage: (systemId: number) =>
+    request<Record<string, unknown>>(`/api/factory-map/${systemId}/coverage`),
+  checkGroundPoint: (body: Record<string, unknown>) =>
+    request<GroundCheckResult>("/api/factory-map/check-ground-point",
+      { method: "POST", body: JSON.stringify(body) }),
+  alignFloorPlan: (planId: number, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/factory-map/floor-plans/${planId}/alignment`,
+      { method: "PUT", body: JSON.stringify(body) }),
 
   // preview
   startPreview: (id: number) =>

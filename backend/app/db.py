@@ -39,7 +39,14 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
-def init_db() -> None:
+def init_db() -> list[str]:
+    """Create any missing tables, then bring existing ones up to date.
+
+    ``create_all`` adds new tables but never alters existing ones, so the
+    migration runner handles added columns on databases from earlier releases.
+    """
     from . import models  # noqa: F401  (registers mappers)
+    from .migrations import run_migrations
 
     Base.metadata.create_all(bind=engine)
+    return run_migrations(engine)
