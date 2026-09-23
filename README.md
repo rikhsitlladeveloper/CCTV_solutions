@@ -56,10 +56,23 @@ browser-compatible preview).
 ### Development
 
 ```bash
-./backend/run.sh                 # API on :8000 with reload-free uvicorn
+./backend/run.sh                 # API on :8000
 cd frontend && npm run dev       # Vite dev server on :5173, proxies /api to :8000
-./backend/test.sh                # 48 backend tests
+./backend/test.sh                # 145 backend tests
 ```
+
+### Documentation
+
+| | |
+| --- | --- |
+| [Installer guide](docs/INSTALLER-GUIDE.md) | Commissioning and calibrating cameras on site |
+| [Operations](docs/OPERATIONS.md) | Install, configure, expose, back up, upgrade, troubleshoot |
+| [Architecture](docs/ARCHITECTURE.md) | How it fits together, and the conventions everything derives from |
+| [API reference](docs/API.md) | Every endpoint, with request and response shapes |
+| [Security](docs/SECURITY.md) | Threat model, credential handling, network policy |
+| [Development](docs/DEVELOPMENT.md) | Working on the code |
+
+Full index: [docs/](docs/README.md).
 
 ---
 
