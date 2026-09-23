@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+backend/.venv/
+backend/data/
+backend/.pytest_cache/
+.pytest_cache/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets — never commit. Keys live outside the repo (see README).
+*.key
+.env
+.env.local
+backend/secrets/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
