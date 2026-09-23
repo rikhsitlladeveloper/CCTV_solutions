@@ -34,6 +34,8 @@ class WorkspaceIn(BaseModel):
 
 class WorkspaceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    # Frames created before floors were recorded can be attached to one.
+    floor_id: int | None = None
     width_m: Finite | None = Field(default=None, gt=0.5, le=5000)
     length_m: Finite | None = Field(default=None, gt=0.5, le=5000)
     origin_description: str | None = None

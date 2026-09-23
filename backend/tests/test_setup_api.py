@@ -658,3 +658,43 @@ def test_resaving_advanced_observations_does_not_wipe_them(client, auth, site, i
     second = client.put(f"/api/cameras/{camera['id']}/observations", headers=auth,
                         json={"observations": body, "replace_existing": True}).json()
     assert len(second) == len(first) == len(body)
+
+
+def test_a_workspace_from_before_floors_can_be_attached_to_one(client, auth):
+    """Upgrade path: frames created by an earlier release have no floor."""
+    from app.db import SessionLocal
+    from app.models import CoordinateSystem
+
+    with SessionLocal() as db:
+        legacy = CoordinateSystem(name="Legacy frame", origin_description="Old corner.")
+        db.add(legacy)
+        db.commit()
+        legacy_id = legacy.id
+
+    listed = client.get("/api/setup/workspaces", headers=auth).json()
+    entry = next(w for w in listed if w["id"] == legacy_id)
+    assert entry["floor_id"] is None, "it starts unattached"
+
+    tree = client.get("/api/locations/tree", headers=auth).json()
+    spare = client.post("/api/locations/resolve", headers=auth, json={
+        "site": "Upgrade Site", "building": "Shed", "floor": "Ground", "area": "Bay"}).json()
+    tree = client.get("/api/locations/tree", headers=auth).json()
+    floor_id = next(f["id"] for s in tree for b in s["buildings"] for f in b["floors"]
+                    if b["name"] == "Shed")
+
+    attached = client.patch(f"/api/setup/workspaces/{legacy_id}", headers=auth,
+                            json={"floor_id": floor_id})
+    assert attached.status_code == 200, attached.text
+    assert attached.json()["floor_id"] == floor_id
+    void = spare
+
+    # A second frame cannot claim the same floor.
+    with SessionLocal() as db:
+        other = CoordinateSystem(name="Rival frame")
+        db.add(other)
+        db.commit()
+        other_id = other.id
+    clash = client.patch(f"/api/setup/workspaces/{other_id}", headers=auth,
+                         json={"floor_id": floor_id})
+    assert clash.status_code == 409
+    assert clash.json()["detail"]["workspace_id"] == legacy_id

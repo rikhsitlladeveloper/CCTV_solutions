@@ -203,6 +203,20 @@ def update_workspace(workspace_id: int, payload: WorkspaceUpdate,
     data = payload.model_dump(exclude_unset=True,
                               exclude={"confirm_redefinition", "redefinition_reason"})
 
+    if "floor_id" in data and data["floor_id"] is not None:
+        floor = db.get(Floor, data["floor_id"])
+        if not floor:
+            raise HTTPException(404, "Floor not found.")
+        clash = db.scalars(select(CoordinateSystem).where(
+            CoordinateSystem.floor_id == floor.id,
+            CoordinateSystem.id != cs.id)).first()
+        if clash:
+            raise HTTPException(409, {
+                "message": f"'{_floor_label(db, floor.id)}' already uses the workspace "
+                           f"'{clash.name}'.",
+                "workspace_id": clash.id,
+            })
+
     field_map = {"width_m": "workspace_width_m", "length_m": "workspace_length_m"}
     redefining = {f for f in REDEFINING_FIELDS if f in data and data[f] != getattr(cs, f)}
 

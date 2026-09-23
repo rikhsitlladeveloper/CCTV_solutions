@@ -720,8 +720,12 @@ function StepMatch({ workspace, points, cameras, onCamerasChanged, onError, onNe
   onNext: () => void;
   onSay: (m: string) => void;
 }) {
-  const inArea = cameras.filter((c) => c.location.floor_id === workspace.floor_id
-    || c.coordinate_system_id === workspace.id);
+  // Already in this area, or on its floor, or not yet in any area. The last case
+  // matters on an upgraded install, where existing cameras predate workspaces.
+  const inArea = cameras.filter((c) =>
+    c.coordinate_system_id === workspace.id
+    || (workspace.floor_id !== null && c.location.floor_id === workspace.floor_id)
+    || c.coordinate_system_id === null);
   const [cameraId, setCameraId] = useState<number | null>(inArea[0]?.id ?? null);
   const [status, setStatus] = useState<MatchStatus | null>(null);
   const [target, setTarget] = useState<number | null>(null);
@@ -821,6 +825,13 @@ function StepMatch({ workspace, points, cameras, onCamerasChanged, onError, onNe
       {assigned && (
         <Notice tone="ok" title="Camera added to this area">
           Its measurements will use this area's origin.
+        </Notice>
+      )}
+
+      {inArea.length === 0 && (
+        <Notice tone="warn" title="No cameras to match yet">
+          No camera is in this area or waiting to be assigned. Register cameras in step 1, or
+          check that this area is attached to the right floor.
         </Notice>
       )}
 
