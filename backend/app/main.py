@@ -23,7 +23,8 @@ from .db import init_db
 from .media import preview_manager
 from .netguard import HostNotAllowed
 from .routers import (
-    auth, calibration, cameras, coordinates, factorymap, floorplans, locations, preview,
+    auth, calibration, cameras, coordinates, factorymap, floorplans, graph, locations,
+    preview, setup,
 )
 from .security import ensure_operator
 
@@ -136,6 +137,8 @@ app.include_router(coordinates.router)
 app.include_router(coordinates.points_router)
 app.include_router(calibration.router)
 app.include_router(factorymap.router)
+app.include_router(setup.router)
+app.include_router(graph.router)
 
 
 @app.get("/api/health")

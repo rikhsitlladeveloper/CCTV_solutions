@@ -1,0 +1,560 @@
+{
+  "format": "numenor.site-geometry",
+  "format_version": "1.0",
+  "exported_at": "2026-09-23T15:23:02.308803+00:00",
+  "conventions": {
+    "world_frame": "Right-handed. X and Y on the factory floor, Z up. Units: metres.",
+    "floor_plane": "Z = 0 unless a different plane height is given explicitly.",
+    "homography_direction": "H_image_to_floor maps homogeneous image coordinates [u, v, 1] to floor [wx, wy, w]; divide by w for metres.",
+    "pixel_convention": "Each mapping states whether it expects raw pixels or pixels undistorted with that camera's stored matrix. Apply the stated one; they are not interchangeable."
+  },
+  "workspace": {
+    "id": 1,
+    "name": "Demo Line floor (synthetic)",
+    "floor": "Demo Line (synthetic) \u00b7 Assembly Building (synthetic) \u00b7 Ground Floor",
+    "origin_description": "SYNTHETIC. Origin at the north-west corner of the bay floor, where the painted boundary meets the wall.",
+    "x_axis_description": "X runs east along the north wall; Y runs south into the bay.",
+    "surface_description": "One continuous flat concrete floor across the whole bay.",
+    "definition_revision": 1,
+    "width_m": 24.0,
+    "length_m": 16.0,
+    "floor_plane_z": 0.0,
+    "units": "metres"
+  },
+  "reference_points": [
+    {
+      "id": 1,
+      "code": "FP-01",
+      "name": "Floor marker, NW corner (synthetic)",
+      "x": 2.0,
+      "y": 2.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 2,
+      "code": "FP-02",
+      "name": "Column base, W mid (synthetic)",
+      "x": 2.0,
+      "y": 8.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 3,
+      "code": "FP-03",
+      "name": "Floor marker, SW corner (synthetic)",
+      "x": 2.0,
+      "y": 14.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 4,
+      "code": "FP-04",
+      "name": "Floor marker, N bay 2 (synthetic)",
+      "x": 9.0,
+      "y": 2.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 5,
+      "code": "FP-05",
+      "name": "Drain cover, centre W (synthetic)",
+      "x": 9.0,
+      "y": 8.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 6,
+      "code": "FP-06",
+      "name": "Floor marker, S bay 2 (synthetic)",
+      "x": 9.0,
+      "y": 14.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 7,
+      "code": "FP-07",
+      "name": "Floor marker, N bay 3 (synthetic)",
+      "x": 15.0,
+      "y": 2.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 8,
+      "code": "FP-08",
+      "name": "Drain cover, centre E (synthetic)",
+      "x": 15.0,
+      "y": 8.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 9,
+      "code": "FP-09",
+      "name": "Floor marker, S bay 3 (synthetic)",
+      "x": 15.0,
+      "y": 14.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 10,
+      "code": "FP-10",
+      "name": "Floor marker, NE corner (synthetic)",
+      "x": 22.0,
+      "y": 2.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 11,
+      "code": "FP-11",
+      "name": "Column base, E mid (synthetic)",
+      "x": 22.0,
+      "y": 8.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 12,
+      "code": "FP-12",
+      "name": "Floor marker, SE corner (synthetic)",
+      "x": 22.0,
+      "y": 14.0,
+      "role": "calibration",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 13,
+      "code": "VP-01",
+      "name": "Paint mark, NW aisle (synthetic)",
+      "x": 6.0,
+      "y": 5.0,
+      "role": "validation",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 14,
+      "code": "VP-02",
+      "name": "Bolt head, centre (synthetic)",
+      "x": 12.0,
+      "y": 11.0,
+      "role": "validation",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 15,
+      "code": "VP-03",
+      "name": "Paint mark, NE aisle (synthetic)",
+      "x": 18.5,
+      "y": 5.5,
+      "role": "validation",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 16,
+      "code": "VP-04",
+      "name": "Anchor point, N centre (synthetic)",
+      "x": 11.0,
+      "y": 4.5,
+      "role": "validation",
+      "uncertainty_m": 0.005
+    },
+    {
+      "id": 17,
+      "code": "VP-05",
+      "name": "Paint mark, SE aisle (synthetic)",
+      "x": 17.0,
+      "y": 12.0,
+      "role": "validation",
+      "uncertainty_m": 0.005
+    }
+  ],
+  "cameras": [
+    {
+      "camera_id": 3,
+      "name": "Demo Dispatch Door",
+      "area": "Dispatch",
+      "calibration": {
+        "revision_id": 3,
+        "revision_number": 1,
+        "method": "homography",
+        "status": "validated",
+        "stale_reason": null,
+        "H_image_to_floor": [
+          [
+            -0.18217507444855818,
+            0.4038434474785939,
+            186.7443790468914
+          ],
+          [
+            -0.00031613301245924546,
+            0.5818789009821765,
+            -256.7422375924292
+          ],
+          [
+            -1.4018748256995925e-05,
+            0.03368635351443993,
+            1.0
+          ]
+        ],
+        "H_floor_to_image": [
+          [
+            -87.1828780152984,
+            -55.60169076078348,
+            2005.609918641935
+          ],
+          [
+            -0.03698035200208806,
+            1.6959166772066006,
+            442.3193153479056
+          ],
+          [
+            2.353839141391197e-05,
+            -0.05790871482485462,
+            0.9999999999999999
+          ]
+        ],
+        "maps_to": "floor XY in metres on the plane Z = 0.000",
+        "pixel_convention": "undistorted",
+        "distortion_corrected": true,
+        "source_image": {
+          "width": 1920,
+          "height": 1080
+        },
+        "covered_area_polygon": [
+          [
+            22.0,
+            2.0
+          ],
+          [
+            15.0,
+            8.0
+          ],
+          [
+            9.0,
+            8.0
+          ],
+          [
+            2.0,
+            2.0
+          ]
+        ],
+        "activated_at": "2026-09-23T15:04:01.039696",
+        "accuracy": {
+          "checked": true,
+          "passed": true,
+          "held_out_mean_error_m": 0.0232,
+          "held_out_max_error_m": 0.0247,
+          "held_out_points": 3,
+          "reviewer": "demo-seeder",
+          "checked_at": "2026-09-23T15:04:01.040496"
+        }
+      },
+      "zones": [
+        {
+          "zone_id": 2,
+          "name": "Dispatch doorway",
+          "kind": "entrance",
+          "image_polygon": [
+            [
+              700,
+              560
+            ],
+            [
+              1220,
+              570
+            ],
+            [
+              1240,
+              860
+            ],
+            [
+              690,
+              850
+            ]
+          ],
+          "image_size": [
+            1920,
+            1080
+          ],
+          "world_polygon": null
+        }
+      ]
+    },
+    {
+      "camera_id": 2,
+      "name": "Demo Line East",
+      "area": "Line East",
+      "calibration": {
+        "revision_id": 2,
+        "revision_number": 1,
+        "method": "homography",
+        "status": "validated",
+        "stale_reason": null,
+        "H_image_to_floor": [
+          [
+            0.0002718635610764178,
+            -0.24014314271462447,
+            107.36199610938488
+          ],
+          [
+            -0.05705267616405013,
+            -0.08086232625052298,
+            62.752802049155854
+          ],
+          [
+            1.0778946927118339e-05,
+            -0.01011513076617985,
+            1.0
+          ]
+        ],
+        "H_floor_to_image": [
+          [
+            -40.36281051825068,
+            61.63741737221727,
+            465.5112546443189
+          ],
+          [
+            -4.206803053754485,
+            0.06451935337761523,
+            447.6020028792925
+          ],
+          [
+            -0.04211729440388578,
+            -1.1764754215836918e-05,
+            1.0
+          ]
+        ],
+        "maps_to": "floor XY in metres on the plane Z = 0.000",
+        "pixel_convention": "undistorted",
+        "distortion_corrected": true,
+        "source_image": {
+          "width": 1920,
+          "height": 1080
+        },
+        "covered_area_polygon": [
+          [
+            15.0,
+            14.0
+          ],
+          [
+            2.0,
+            14.0
+          ],
+          [
+            2.0,
+            2.0
+          ],
+          [
+            15.0,
+            2.0
+          ]
+        ],
+        "activated_at": "2026-09-23T15:04:01.034190",
+        "accuracy": {
+          "checked": true,
+          "passed": true,
+          "held_out_mean_error_m": 0.0284,
+          "held_out_max_error_m": 0.0566,
+          "held_out_points": 3,
+          "reviewer": "demo-seeder",
+          "checked_at": "2026-09-23T15:04:01.035094"
+        }
+      },
+      "zones": []
+    },
+    {
+      "camera_id": 1,
+      "name": "Demo Line West",
+      "area": "Line West",
+      "calibration": {
+        "revision_id": 1,
+        "revision_number": 1,
+        "method": "homography",
+        "status": "validated",
+        "stale_reason": null,
+        "H_image_to_floor": [
+          [
+            2.752861781480563e-06,
+            -0.0020235246087229163,
+            -101.6031151321794
+          ],
+          [
+            0.06961159269303994,
+            -0.09475890086257699,
+            -58.71172984362944
+          ],
+          [
+            2.058380391594428e-06,
+            -0.011841912341502,
+            1.0
+          ]
+        ],
+        "H_floor_to_image": [
+          [
+            -5618.90860286368,
+            8571.831122771157,
+            -67631.5845485968
+          ],
+          [
+            -495.9636348443252,
+            1.507047320373018,
+            -50302.96893732685
+          ],
+          [
+            -5.86159203710891,
+            0.00020223315918133214,
+            1.0
+          ]
+        ],
+        "maps_to": "floor XY in metres on the plane Z = 0.000",
+        "pixel_convention": "undistorted",
+        "distortion_corrected": true,
+        "source_image": {
+          "width": 1920,
+          "height": 1080
+        },
+        "covered_area_polygon": [
+          [
+            22.0,
+            14.0
+          ],
+          [
+            9.0,
+            14.0
+          ],
+          [
+            9.0,
+            2.0
+          ],
+          [
+            22.0,
+            2.0
+          ]
+        ],
+        "activated_at": "2026-09-23T15:04:01.024230",
+        "accuracy": {
+          "checked": true,
+          "passed": true,
+          "held_out_mean_error_m": 0.0087,
+          "held_out_max_error_m": 0.0201,
+          "held_out_points": 4,
+          "reviewer": "demo-seeder",
+          "checked_at": "2026-09-23T15:04:01.028537"
+        }
+      },
+      "zones": [
+        {
+          "zone_id": 1,
+          "name": "East end of the bay",
+          "kind": "exit",
+          "image_polygon": [
+            [
+              1350,
+              620
+            ],
+            [
+              1800,
+              640
+            ],
+            [
+              1820,
+              900
+            ],
+            [
+              1330,
+              880
+            ]
+          ],
+          "image_size": [
+            1920,
+            1080
+          ],
+          "world_polygon": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": 1,
+      "kind": "overlap",
+      "camera_a_id": 1,
+      "camera_a_name": "Demo Line West",
+      "camera_b_id": 2,
+      "camera_b_name": "Demo Line East",
+      "directed": false,
+      "zone_a_id": null,
+      "zone_b_id": null,
+      "overlap_polygon": [
+        [
+          15.0,
+          14.0
+        ],
+        [
+          9.0,
+          14.0
+        ],
+        [
+          9.0,
+          2.0
+        ],
+        [
+          15.0,
+          2.0
+        ]
+      ],
+      "min_travel_seconds": null,
+      "max_travel_seconds": null,
+      "verification": "verified",
+      "suggested_by_geometry": true,
+      "notes": "SYNTHETIC DEMO DATA. Generated from known geometry, not measured from real hardware. Accuracy figures here describe the simulation only. Confirmed on site in the scenario: the two views share the middle of the bay."
+    },
+    {
+      "id": 2,
+      "kind": "transition",
+      "camera_a_id": 1,
+      "camera_a_name": "Demo Line West",
+      "camera_b_id": 3,
+      "camera_b_name": "Demo Dispatch Door",
+      "directed": true,
+      "zone_a_id": 1,
+      "zone_b_id": 2,
+      "overlap_polygon": null,
+      "min_travel_seconds": 4.0,
+      "max_travel_seconds": 25.0,
+      "verification": "verified",
+      "suggested_by_geometry": false,
+      "notes": "SYNTHETIC DEMO DATA. Generated from known geometry, not measured from real hardware. Accuracy figures here describe the simulation only. Walking from the east end of the bay to the dispatch doorway took between 4 and 25 seconds in the scenario."
+    }
+  ],
+  "graph_summary": {
+    "cameras": 3,
+    "possible_pairs": 3,
+    "overlaps": 1,
+    "transitions": 1,
+    "excluded": 0,
+    "pairs_with_a_record": 2,
+    "pairs_unknown": 1,
+    "verified": 2,
+    "unverified": 0,
+    "needs_review": 0,
+    "interpretation": "A pair with no record is unknown, not impossible. Only an explicit exclusion states that two views have no direct association, and even then people can still travel between them by way of other cameras."
+  },
+  "limitations": [
+    "Geometry and topology only. Nothing here identifies or describes any person.",
+    "A floor mapping is a flat-plane mapping. It is valid on the stated floor surface, for the stated image size, and most trustworthy inside covered_area_polygon.",
+    "A mapping is not a camera pose: it does not say where a camera physically is.",
+    "Covered area and overlap polygons are geometric. They take no account of walls, machinery, racking or any other occlusion.",
+    "A camera pair with no relationship record is unknown, not impossible. Only an 'excluded' record states that two views have no direct association, and even then travel via other cameras remains possible.",
+    "Accuracy figures apply to the area the validation points cover, not the whole view."
+  ],
+  "_note": "Example export from the synthetic guided-setup demo. The geometry is real output from the real pipeline, but the cameras do not exist and the accuracy figures describe the simulation, not any hardware."
+}

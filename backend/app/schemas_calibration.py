@@ -420,6 +420,9 @@ class MapCameraOut(BaseModel):
     vertical_fov_deg: float | None = None
     floor_polygon: list[list[float]] | None = None
     floor_polygon_clipped: bool = False
+    # True when the polygon is the floor area a homography covers rather than a
+    # projected view frustum. Such a camera has no known physical position.
+    area_is_mapped_coverage: bool = False
     is_approximate: bool = True
     revision_id: int | None = None
     area: str | None = None

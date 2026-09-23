@@ -200,6 +200,7 @@ export interface MapCamera {
   vertical_fov_deg: number | null;
   floor_polygon: number[][] | null;
   floor_polygon_clipped: boolean;
+  area_is_mapped_coverage: boolean;
   is_approximate: boolean;
   revision_id: number | null;
   area: string | null;

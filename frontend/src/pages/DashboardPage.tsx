@@ -191,11 +191,14 @@ export default function DashboardPage() {
             <div className="empty-mark" aria-hidden="true">＋</div>
             <h2>No cameras registered yet</h2>
             <p>
-              Register your first camera to get started. You will enter its address and
-              credentials, test the connection, record where it is installed, and optionally
-              place it on a floor plan. A floor plan is not required — you can place cameras later.
+              The guided setup walks you through the whole job: connect the cameras, describe the
+              area they watch, measure a few floor points, and end up knowing where things are in
+              metres. No floor plan needed.
             </p>
-            <Link className="btn btn-primary" to="/cameras/new">Register the first camera</Link>
+            <div className="row" style={{ justifyContent: "center" }}>
+              <Link className="btn btn-primary" to="/setup">Start guided setup</Link>
+              <Link className="btn" to="/cameras/new">Just register a camera</Link>
+            </div>
           </div>
         ) : cameras.length === 0 ? (
           <div className="empty">

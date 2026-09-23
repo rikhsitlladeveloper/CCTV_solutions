@@ -1,224 +1,253 @@
-# Numenor installer guide — positioning and calibration
+# Installer guide
 
-How to get cameras from "registered" to "validated" in a shared factory
-coordinate system. Read the first section before touching anything: almost every
-calibration problem is a measurement problem, not a software problem.
+Getting cameras from "on the wall" to "the system knows where things are on the
+floor", in seven steps. Open **Setup** and work straight through it.
+
+Almost every calibration problem is a measurement problem, not a software
+problem. The one rule worth remembering: **the system only knows what you
+measure.** Clicking a spot on a grid records where you *say* something is; it
+does not measure anything.
 
 ---
 
-## 0. What the statuses mean
+## 0. The three things a camera can be
 
-| Status | Meaning |
+Shown separately everywhere, because none of them implies another.
+
+| Badge | Means |
 | --- | --- |
-| **Unconfigured** | No position recorded. |
-| **Approximate** | Typed or dragged by hand. Fine for a map pin; not a measurement. |
-| **Calibrated, not validated** | Solved from reference points, but nothing independent has confirmed it. |
-| **Validated** | Solved *and* checked against held-out points, within your thresholds, over the area those points cover. |
-| **Needs recalibration** | Something it depended on changed: the frame, a reference point, or the stream geometry. |
+| **Connection** — Not tested / Reachable / Failed | Whether the camera answers. |
+| **Calibration** — Not set up / Approximate / Mapping ready / Needs redoing | Whether it knows how its picture relates to the floor. |
+| **Validation** — Not checked / Accuracy checked / Check failed | Whether that mapping has been tested against points it never saw. |
 
-Connection status and calibration status are separate. A camera can be online
-and uncalibrated, or calibrated and unreachable.
+A camera can be reachable and uncalibrated, or calibrated and offline.
 
 ---
 
-## 1. Define the factory coordinate system
+## Step 1 — Connect cameras
 
-**Factory map → New frame.**
+Add every camera watching the area and press **Check** on each. You need its
+address, login, and either ONVIF or the RTSP stream path.
 
-Pick a physical origin you can find again in two years: a column base, a door
-threshold, a surveyed floor plate. Write down precisely what it is and which way
-the axes run — that description is the only thing tying your numbers to the
-building.
-
-* Right-handed, metres. X and Y on the floor, Z up.
-* Floor plane is Z = 0 by default.
-* Grid extent is just the drawing area; it does not constrain where cameras go.
-* Acceptance thresholds decide what counts as Validated. Defaults are 3 px
-  reprojection, 0.25 m ground error, 6 reference points.
-
-You do **not** need a floor plan. The grid is blank and metric. A plan image can
-be aligned behind it later purely as a backdrop; doing so never moves a camera.
-
-> Changing the origin, the floor height or the site after cameras are calibrated
-> redefines what every coordinate means. Numenor refuses that edit unless you
-> confirm it, and then marks every affected calibration **needs recalibration**
-> rather than silently reinterpreting old numbers.
+You do not need to know where the camera is mounted, its height, or which way it
+points. None of that is ever typed in.
 
 ---
 
-## 2. Survey reference points
+## Step 2 — Create the area
 
-**Factory map → Add reference point**, or the API.
+The area is the patch of floor these cameras watch. You are asked for:
 
-These are the ground truth. Everything downstream inherits their error.
+* a name;
+* the floor it is on;
+* roughly how wide and long it is, in metres (approximate is fine — it only
+  sizes the grid);
+* **where you measure from** — a corner you can find again;
+* **which way the first direction runs.**
 
-* Six or more per camera, spread across the area you care about — not clustered,
-  not in a line.
-* For full pose recovery, include points at **different heights** (bracket tops,
-  rail tops). Points all on the floor leave a two-solution ambiguity.
-* Record how you measured each one and its uncertainty. A 5 cm error in a
-  reference point is a 5 cm error in everything solved from it.
-* Give each a stable code (RP-01, RP-02…). Points are shared between cameras, so
-  two cameras can be solved against different subsets of the same survey.
+Those last two matter more than anything else on the page. Every measurement you
+take afterwards is relative to them, so write them down as if for someone
+arriving in two years: *"the inside corner of column A1 where it meets the
+floor"*, *"east along the north wall towards the loading doors"*.
 
-ArUco markers can assist picking points in the image, but a marker ID fixes
-nothing in the world. Each marker still needs a surveyed pose or known corner
-coordinates, and Numenor requires the marker's physical size before it will
-accept the reference.
+**One area per floor.** Everything on a floor shares an origin so their
+measurements can be compared. If you try to add a second area to a floor that
+already has one, you are told to use the existing one.
 
----
+A separate area *is* right when a surface cannot share one flat mapping: a
+mezzanine, a raised platform, a ramp. Those need their own origin.
 
-## 3. Choose a method per camera
-
-**Camera → Position & Calibration.**
-
-### A. Manual placement — "get it on the map"
-Type X/Y/Z and roll/pitch/yaw. Saved as **Approximate**, permanently. Use it for
-site overview, not for measuring anything.
-
-Angle convention, which trips everyone up once:
-
-```
-R_world_camera = Rz(yaw) · Ry(pitch) · Rx(roll)
-```
-
-applied to the **optical** frame (X right, Y down, Z forward). All-zero rotation
-points the camera *straight up at the ceiling*. A wall-mounted camera looking
-level along world +Y is **roll −90°, pitch 0°, yaw 0°**. Yaw increases
-counter-clockwise seen from above; map heading increases clockwise, so
-`heading = −yaw`.
-
-### B. Floor-plane calibration — "where on the floor is that?"
-Maps image pixels to floor X/Y via a homography. Needs **no intrinsics**.
-
-* Minimum 4 non-collinear floor points; 6+ spread out is much better.
-* Produces **no camera position**, and Numenor will not invent one.
-* Only valid for the one plane it was fitted to (normally Z = 0).
-* Without intrinsics it fits raw pixels and lens distortion is *not* corrected.
-  Accuracy degrades toward the image edges. The result is labelled accordingly.
-
-### C. Full camera pose — "where is the camera, and where does it point?"
-Recovers 6-DoF pose with solvePnP. **Requires intrinsics.**
-
-* Minimum 4 points; 6+ at varied heights strongly preferred.
-* Planar-only point sets are flagged as ambiguous.
-* Solutions putting reference points behind the camera are rejected outright.
+No floor plan is needed. The grid starts blank. A plan image can be laid behind
+it later purely as a backdrop.
 
 ---
 
-## 4. Intrinsics (only for method C)
+## Step 3 — Add floor points
 
-**Position & Calibration → Intrinsics.**
+Measure fixed marks on the floor — column bases, drain covers, the corners of
+painted bays — and record how far each one is from your origin, along your two
+directions.
 
-Either import a validated JSON calibration, or run the guided checkerboard
-workflow: 9×6 inner corners is a good board, ten or more views at varied tilts
-and distances covering the whole frame.
+* **Six to ten** spread across the area, for building the mapping.
+* **Two or three more**, marked as *checking* points. These are never used to
+  build the mapping, which is exactly what makes them able to test it.
+* Spread them out. Points in a line, or clustered in one corner, cannot describe
+  the rest of the floor.
 
-Non-negotiable: intrinsics are bound to one exact image geometry — resolution,
-crop, rotation, lens and zoom. Numenor refuses to apply a 1920×1080 calibration
-to a 1280×720 substream rather than rescaling it behind your back. If you change
-the stream profile, recalibrate.
+Each point records how you measured it and, optionally, how accurate that
+measurement is. Nothing built on a point can be better than the point itself.
 
-Only the OpenCV pinhole model is supported. Fisheye calibrations are rejected,
-not approximated — applying fisheye coefficients as pinhole ones produces
-confidently wrong numbers.
-
----
-
-## 5. Mark reference points in the image
-
-**Position & Calibration → Reference points.**
-
-Load a frame, pick a point from the registry, click where it appears. Clicks are
-recorded in the stream's native pixels.
-
-**Mark at least two points as "held out".** Held-out points are never used to
-solve, which makes them the only independent check you have. Without them,
-Numenor will report a fitting error but will not call the calibration validated.
+> Clicking the grid places a pin where you say a mark is. Replace the numbers
+> with tape-measure or laser values before calibrating against it.
 
 ---
 
-## 6. Solve, review, activate
+## Step 4 — Match points
 
-Solving creates a **new revision**; it does not activate it. Your working
-calibration keeps running until you explicitly switch over. Nothing is ever
-overwritten.
+For each camera: pick a measured point from the list, then click exactly where
+it appears in the picture.
 
-Review before activating: the solver reports inliers, outliers, point spread and
-any degeneracy it detected. A rejected outlier usually means a mis-click or a
-mistyped survey coordinate — fix the cause rather than accepting the fit.
+* Zoom and pan the picture as you like — clicks are stored against the
+  picture's own pixels, so display size changes nothing.
+* **✥** moves a point you have already placed, **×** removes it, **Undo** steps
+  back.
+* **Refresh picture** grabs a fresh frame.
+* Your work saves as you go; closing the browser loses nothing.
 
-A hand correction on top of a solved pose is saved as a separate, unvalidated
-revision, because the solver's validation no longer applies to it.
+Cameras do not need the same points. Each matches whatever it can actually see
+from the shared list.
 
----
+The panel warns you as you go if points are nearly in a line, bunched in one
+part of the frame, duplicated, or matched against a different image size than
+before.
 
-## 7. Validate
+### Markers (optional)
 
-**Revisions & validation → Validate.**
-
-Two numbers are reported, and they are not interchangeable:
-
-* **Fitting reprojection error (px)** — how well the solve reproduced its own
-  input. A solver can fit its input beautifully and still be wrong. On its own
-  this is *not* evidence of real-world accuracy.
-* **Held-out ground error (m)** — distance on the floor between where held-out
-  points actually are and where the calibration puts them. This is the real
-  number, and it applies only to the area those points cover.
-
-Numenor does not produce a confidence percentage, because it has no basis for
-one.
+**Detect markers** finds ArUco markers in the picture and proposes matches.
+Every proposal is reviewed before it counts, and a marker ID only says *which*
+marker it is — its position still comes from your survey. Markers must lie flat
+on the floor being mapped. The manual workflow works fine without them.
 
 ---
 
-## 8. Cross-check several cameras
+## Step 5 — Calculate mapping
 
-**Geometry check.** Mark the same physical floor spot in two or more cameras and
-compare where each places it.
+Press **Calculate mapping**. There is nothing to choose.
 
-Disagreement in metres tells you the calibrations are inconsistent. Agreement
-does **not** prove either is correct — they can share a common error. Only a
-surveyed coordinate measures accuracy.
+The system fits the mapping, discards any point that disagrees with the rest,
+and refits without it. You get:
 
-Floor footprints on the map are pure geometry: where the image border meets the
-floor plane. They ignore machinery, racking, walls and people. Treat them as
-geometric coverage, never as a guarantee that anything is visible.
+* the floor area your points cover — where the mapping actually works;
+* which points were used and which were thrown out, by name;
+* how closely the mapping matches the points it was built from;
+* a plain explanation if it cannot be done.
 
----
+A rejected point almost always means a mis-click or a mistyped measurement.
+Fix the cause rather than accepting the result.
 
-## 9. Export
+**Nothing is switched on.** The camera keeps whatever it had until you activate
+the new mapping in the next step.
 
-**Revisions → Export**, or `GET /api/cameras/{id}/calibration/export`.
-
-Self-describing JSON containing the conventions, the frame, `T_world_camera`,
-intrinsics, metrics, validation and explicit limitations. It carries no
-credentials, host addresses or stream URLs. See
-[`calibration-export-example.json`](calibration-export-example.json).
+> How well a mapping matches its own points is not proof of accuracy. Step 6 is
+> the actual test.
 
 ---
 
-## 10. Demo data
+## Step 6 — Check accuracy
+
+Compares your *checking* points — the ones held back in step 3 — against where
+the mapping puts them.
+
+You see each point's measured position, the predicted position, and the miss in
+centimetres, plus the typical and worst error across all of them. Set the
+acceptable limit yourself; 25 cm suits general monitoring.
+
+Then press **Use this mapping** to put it into service. That is always a
+separate, deliberate action, and earlier versions are kept.
+
+You can save a mapping that has not been checked, or that failed. It just will
+not be labelled as checked.
+
+> The result speaks for the area your checking points cover, not the whole view.
+
+---
+
+## Step 7 — Connect cameras
+
+Record how the views relate, for a tracking service to use later. Three kinds:
+
+* **See the same ground** — both cameras cover a shared patch of floor. The
+  system suggests these from the mapped areas, but suggestions must be confirmed
+  on site: geometry cannot see racking.
+* **People walk from one to the other** — a direction, optionally from a
+  specific exit zone to a specific entrance zone, with the fastest and slowest
+  plausible walking times. Walk it and time it. Each direction is its own record.
+* **No direct link** — states that two views have no direct association. People
+  can still travel between them through other cameras.
+
+A pair with **no record is unknown, not impossible.** Only an explicit exclusion
+says otherwise.
+
+**Zones** are shapes drawn straight on the picture — a doorway, an aisle mouth.
+They need no calibration; if the camera has a mapping, the zone also gets a
+position on the floor.
+
+Finally, **Download the layout** exports the mappings and this topology as JSON
+for a downstream service. It contains no credentials.
+
+---
+
+## Cross-checking several cameras
+
+**Accuracy check** lets you mark the same physical spot in several cameras and
+compare where each one puts it.
+
+* Without a surveyed position for that spot, this is labelled **cross-camera
+  consistency**: it shows whether the cameras agree, and they can agree while all
+  being wrong.
+* Give it a surveyed position, or pick a reference point, and it becomes a real
+  accuracy measurement.
+
+Walking through the area is a useful sanity check but never a substitute for
+measured validation.
+
+---
+
+## When something changes
+
+The system marks a mapping **Needs redoing** and refuses to activate it when:
+
+* a floor point is re-measured or deleted;
+* a point changes between building and checking;
+* the area's origin or direction description is edited (which needs explicit
+  confirmation first);
+* a camera moves to a different area.
+
+Redrawing a zone marks any relationship built on it for rechecking.
+
+Nothing is silently reused.
+
+---
+
+## Advanced
+
+The **Advanced** sections hold the technical detail: the transform matrices, the
+pixel convention, the fit tolerance, and measurement uncertainty. Full 3D
+calibration — camera XYZ, roll/pitch/yaw, lens calibration, solver choice — is
+still available on each camera's **Position & Calibration** page, and is
+documented in [ARCHITECTURE.md](ARCHITECTURE.md) and [API.md](API.md).
+
+Use the 3D route when you need to know where a camera physically is, or to
+project points at heights other than the floor. For floor tracking, the guided
+mapping is enough and needs no lens calibration.
+
+---
+
+## Demo
 
 ```bash
-./backend/.venv/bin/python backend/seed_demo.py            # create
-./backend/.venv/bin/python backend/seed_demo.py --remove   # delete
+backend/.venv/bin/python backend/seed_demo.py            # guided example
+backend/.venv/bin/python backend/seed_demo.py --remove
+backend/.venv/bin/python backend/seed_demo.py --which pose    # the 3D example
 ```
 
-Builds a synthetic factory with four cameras at known ground-truth poses and
-fifteen reference points, then solves them through the real solvers. Every record
-is labelled SYNTHETIC and the cameras use documentation-range addresses that
-answer nothing. It demonstrates the pipeline; it says nothing about real hardware.
+Three synthetic cameras on a shared floor, twelve measured points, three
+checking points, one confirmed overlap and one walking route — all solved
+through the real pipeline. Everything is labelled SYNTHETIC and the cameras use
+documentation addresses that answer nothing. Remove it before handover.
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Cause |
+| What you see | What it means |
 | --- | --- |
-| "needs camera intrinsics" | Method C without intrinsics. Import them, or use floor-plane calibration. |
-| "calibrated for 1920x1080, but the image is …" | Stream geometry changed. Recalibrate at the new size. |
-| "effectively collinear" | Reference points lie along a line. Spread them out. |
-| "puts N reference points behind the camera" | Image clicks and survey points are mismatched or out of order. |
-| "maps to the horizon" | You clicked at or above the vanishing line, where floor position is undefined. |
-| Ambiguity warning on a planar set | All points at one height. Add points at different heights. |
-| 3D view blank or "lost its graphics context" | No hardware acceleration (common over remote desktops). The 2D grid needs no GPU. |
+| "At least 4 calibration points" | Match more measured points, or turn a checking point into a building point. |
+| A point was left out of the mapping | It disagreed with the rest. Re-check that measurement and where you clicked. |
+| "nearly in a straight line" | Spread the points across the area, not along an aisle. |
+| "cover only 20% of the frame" | The mapping will be poor outside that patch. Match points nearer the edges. |
+| "different image size" | The stream resolution changed. Re-match on the current picture. |
+| "on the horizon line" | You clicked at or above the vanishing line, where the floor is undefined. |
+| "Needs redoing" | Something it depends on changed. Recalculate. |
+| Accuracy check fails on one point | Usually that point's own measurement. Check it before blaming the mapping. |
+| No picture in the matching step | The camera is not answering. Go back to step 1. |

@@ -198,6 +198,9 @@ class Camera(Base):
         back_populates="camera", cascade="all, delete-orphan",
         order_by="CalibrationRevision.revision_number",
     )
+    zones: Mapped[list["MonitoredZone"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan", order_by="MonitoredZone.name"
+    )
 
     @property
     def active_intrinsics(self) -> "CameraIntrinsics | None":
@@ -272,6 +275,34 @@ class ObservationRole(str, enum.Enum):
     holdout = "holdout"               # reserved for independent validation
 
 
+class PointRole(str, enum.Enum):
+    """Default role of a surveyed point across every camera that sees it.
+
+    A point reserved for validation is never fitted against, which is what makes
+    it an independent check rather than a restatement of the fit.
+    """
+    calibration = "calibration"
+    validation = "validation"
+
+
+class ZoneKind(str, enum.Enum):
+    monitored = "monitored"           # an area of interest
+    entrance = "entrance"             # where people arrive in this view
+    exit = "exit"                     # where people leave this view
+
+
+class RelationshipKind(str, enum.Enum):
+    overlap = "overlap"               # the two views cover common ground
+    transition = "transition"         # directed: leaving A can lead to B
+    excluded = "excluded"             # no *direct* association between the pair
+
+
+class VerificationStatus(str, enum.Enum):
+    unverified = "unverified"         # suggested or entered, nobody confirmed it
+    verified = "verified"             # a human checked it on site
+    needs_review = "needs_review"     # a zone or calibration it depends on changed
+
+
 class CoordinateSystem(Base):
     """A factory world frame. Right-handed, X/Y on the floor, Z up, metres."""
 
@@ -284,6 +315,18 @@ class CoordinateSystem(Base):
     origin_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     origin_photo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # One shared frame per floor. Areas on the same floor reference this rather
+    # than quietly creating a second origin nobody can reconcile later.
+    floor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("floors.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    x_axis_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    workspace_width_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    workspace_length_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Flat-plane mapping only holds on one continuous surface. A mezzanine or a
+    # ramp needs its own frame, and saying so is better than a silent error.
+    surface_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     floor_plane_z: Mapped[float] = mapped_column(Float, default=0.0)
     grid_min_x: Mapped[float] = mapped_column(Float, default=-10.0)
@@ -305,6 +348,7 @@ class CoordinateSystem(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     site: Mapped["Site | None"] = relationship()
+    floor: Mapped["Floor | None"] = relationship()
     reference_points: Mapped[list["WorldReferencePoint"]] = relationship(
         back_populates="coordinate_system", cascade="all, delete-orphan", order_by="WorldReferencePoint.name"
     )
@@ -324,6 +368,9 @@ class WorldReferencePoint(Base):
     x: Mapped[float] = mapped_column(Float)
     y: Mapped[float] = mapped_column(Float)
     z: Mapped[float] = mapped_column(Float, default=0.0)
+    role: Mapped[PointRole] = mapped_column(
+        Enum(PointRole, native_enum=False), default=PointRole.calibration
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     measurement_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     uncertainty_m: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -458,6 +505,11 @@ class CalibrationRevision(Base):
     approx_vfov_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
     approx_range_m: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # The floor polygon the reference points actually cover. Projections outside
+    # it are extrapolation and are flagged as such.
+    coverage_polygon_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stale_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     solver: Mapped[str | None] = mapped_column(String(80), nullable=True)
     metrics_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     warnings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -502,3 +554,101 @@ class ValidationResult(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     revision: Mapped[CalibrationRevision] = relationship(back_populates="validations")
+
+
+# =====================================================================
+# Zones and the camera relationship graph
+# =====================================================================
+#
+# This graph configures a future tracking service. It describes geometry and
+# topology only: which views share ground, and which exits plausibly lead where.
+# It identifies nobody.
+
+
+class MonitoredZone(Base):
+    """A polygon drawn in one camera's image, optionally mapped to the floor.
+
+    Zones work without any metric calibration — an installer can mark "the door"
+    in the picture before the camera is calibrated. The world polygon is filled
+    in only when a mapping exists to produce it.
+    """
+
+    __tablename__ = "monitored_zones"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[ZoneKind] = mapped_column(Enum(ZoneKind, native_enum=False), default=ZoneKind.monitored)
+
+    # Polygon in the source image's own pixels: [[u, v], ...]
+    image_polygon_json: Mapped[str] = mapped_column(Text)
+    # The image geometry those pixels belong to. A stream change invalidates them.
+    image_width: Mapped[int] = mapped_column(Integer)
+    image_height: Mapped[int] = mapped_column(Integer)
+
+    # Floor polygon in world metres, derived from a calibration when one exists.
+    world_polygon_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    world_from_revision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("calibration_revisions.id", ondelete="SET NULL"), nullable=True
+    )
+    coordinate_system_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coordinate_systems.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    camera: Mapped["Camera"] = relationship(back_populates="zones")
+
+
+class CameraRelationship(Base):
+    """How two camera views relate on the ground.
+
+    Absence of a record means *unknown*, not impossible. An explicit ``excluded``
+    record is the only way to state that two views have no direct association,
+    and even that only rules out a direct hop — travel via other cameras remains
+    possible.
+    """
+
+    __tablename__ = "camera_relationships"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[RelationshipKind] = mapped_column(Enum(RelationshipKind, native_enum=False))
+
+    camera_a_id: Mapped[int] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
+    camera_b_id: Mapped[int] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
+    coordinate_system_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coordinate_systems.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Overlap: the shared ground, in world metres when both are calibrated.
+    overlap_polygon_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Or paired image polygons when world calibration is not available.
+    zone_a_id: Mapped[int | None] = mapped_column(
+        ForeignKey("monitored_zones.id", ondelete="SET NULL"), nullable=True
+    )
+    zone_b_id: Mapped[int | None] = mapped_column(
+        ForeignKey("monitored_zones.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Transition: how long the walk plausibly takes, in seconds.
+    min_travel_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_travel_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Suggested by geometry, or asserted by a person? Geometry cannot see walls.
+    suggested_by_geometry: Mapped[bool] = mapped_column(Boolean, default=False)
+    verification: Mapped[VerificationStatus] = mapped_column(
+        Enum(VerificationStatus, native_enum=False), default=VerificationStatus.unverified
+    )
+    verified_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    camera_a: Mapped["Camera"] = relationship(foreign_keys=[camera_a_id])
+    camera_b: Mapped["Camera"] = relationship(foreign_keys=[camera_b_id])
+    zone_a: Mapped["MonitoredZone | None"] = relationship(foreign_keys=[zone_a_id])
+    zone_b: Mapped["MonitoredZone | None"] = relationship(foreign_keys=[zone_b_id])

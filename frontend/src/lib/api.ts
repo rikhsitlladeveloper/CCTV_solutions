@@ -5,6 +5,10 @@ import type {
   CalibrationRevision, CameraIntrinsics, Conventions, CoordinateSystem, FactoryMap,
   GroundCheckResult, Observation, ProjectionResult, ReferencePoint, ValidationDetail,
 } from "./calibrationTypes";
+import type {
+  AccuracyResponse, ConsistencyResult, FloorPoint, Job, MarkerDetection, MatchStatus,
+  Relationship, RelationshipGraph, Workspace, Zone,
+} from "./setupTypes";
 
 const TOKEN_KEY = "numenor.token";
 
@@ -237,6 +241,92 @@ export const api = {
   alignFloorPlan: (planId: number, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/factory-map/floor-plans/${planId}/alignment`,
       { method: "PUT", body: JSON.stringify(body) }),
+
+  // ---- guided setup ----
+  listWorkspaces: (floorId?: number) =>
+    request<Workspace[]>(`/api/setup/workspaces${floorId ? `?floor_id=${floorId}` : ""}`),
+  getWorkspace: (id: number) => request<Workspace>(`/api/setup/workspaces/${id}`),
+  createWorkspace: (body: Record<string, unknown>) =>
+    request<Workspace>("/api/setup/workspaces", { method: "POST", body: JSON.stringify(body) }),
+  updateWorkspace: (id: number, body: Record<string, unknown>) =>
+    request<Workspace>(`/api/setup/workspaces/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  assignCameraToWorkspace: (workspaceId: number, cameraId: number) =>
+    request<Record<string, unknown>>(
+      `/api/setup/workspaces/${workspaceId}/cameras/${cameraId}`, { method: "POST" }),
+
+  listFloorPoints: (workspaceId: number) =>
+    request<FloorPoint[]>(`/api/setup/workspaces/${workspaceId}/points`),
+  createFloorPoint: (workspaceId: number, body: Record<string, unknown>) =>
+    request<FloorPoint>(`/api/setup/workspaces/${workspaceId}/points`,
+      { method: "POST", body: JSON.stringify(body) }),
+  updateFloorPoint: (pointId: number, body: Record<string, unknown>) =>
+    request<FloorPoint>(`/api/setup/points/${pointId}`,
+      { method: "PATCH", body: JSON.stringify(body) }),
+  deleteFloorPoint: (pointId: number) =>
+    request<void>(`/api/setup/points/${pointId}`, { method: "DELETE" }),
+
+  getMatches: (cameraId: number) =>
+    request<MatchStatus>(`/api/setup/cameras/${cameraId}/matches`),
+  saveMatches: (cameraId: number, body: Record<string, unknown>) =>
+    request<MatchStatus>(`/api/setup/cameras/${cameraId}/matches`,
+      { method: "PUT", body: JSON.stringify(body) }),
+  deleteMatch: (cameraId: number, observationId: number) =>
+    request<void>(`/api/setup/cameras/${cameraId}/matches/${observationId}`, { method: "DELETE" }),
+
+  calculateMapping: (cameraId: number, body: Record<string, unknown>) =>
+    request<{ job: Job; poll: string; note: string }>(
+      `/api/setup/cameras/${cameraId}/calculate-mapping`,
+      { method: "POST", body: JSON.stringify(body) }),
+  getJob: (jobId: string) => request<Job>(`/api/setup/jobs/${jobId}`),
+  checkAccuracy: (cameraId: number, body: Record<string, unknown>, revisionId?: number) =>
+    request<AccuracyResponse>(
+      `/api/setup/cameras/${cameraId}/check-accuracy${revisionId ? `?revision_id=${revisionId}` : ""}`,
+      { method: "POST", body: JSON.stringify(body) }),
+  activateMapping: (cameraId: number, revisionId?: number) =>
+    request<Record<string, unknown>>(
+      `/api/setup/cameras/${cameraId}/activate-mapping${revisionId ? `?revision_id=${revisionId}` : ""}`,
+      { method: "POST", body: JSON.stringify({ confirm: true }) }),
+  projectPoint: (cameraId: number, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/setup/cameras/${cameraId}/project`,
+      { method: "POST", body: JSON.stringify(body) }),
+  consistencyCheck: (body: Record<string, unknown>) =>
+    request<ConsistencyResult>("/api/setup/consistency-check",
+      { method: "POST", body: JSON.stringify(body) }),
+
+  // ---- markers ----
+  markerDictionaries: () =>
+    request<{ dictionaries: string[]; note: string }>("/api/markers/dictionaries"),
+  detectMarkers: (cameraId: number, dictionary: string) =>
+    request<MarkerDetection>(`/api/cameras/${cameraId}/detect-markers`,
+      { method: "POST", body: JSON.stringify({ dictionary }) }),
+  acceptMarkers: (cameraId: number, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/cameras/${cameraId}/accept-markers`,
+      { method: "POST", body: JSON.stringify(body) }),
+
+  // ---- zones ----
+  listZones: (cameraId: number) => request<Zone[]>(`/api/cameras/${cameraId}/zones`),
+  createZone: (cameraId: number, body: Record<string, unknown>) =>
+    request<Zone>(`/api/cameras/${cameraId}/zones`, { method: "POST", body: JSON.stringify(body) }),
+  updateZone: (zoneId: number, body: Record<string, unknown>) =>
+    request<Zone>(`/api/zones/${zoneId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteZone: (zoneId: number) => request<void>(`/api/zones/${zoneId}`, { method: "DELETE" }),
+
+  // ---- relationships ----
+  relationshipGraph: (workspaceId?: number) =>
+    request<RelationshipGraph>(
+      `/api/relationships${workspaceId ? `?workspace_id=${workspaceId}` : ""}`),
+  createRelationship: (body: Record<string, unknown>) =>
+    request<Relationship>("/api/relationships", { method: "POST", body: JSON.stringify(body) }),
+  acceptSuggestion: (body: Record<string, unknown>) =>
+    request<Relationship>("/api/relationships/accept-suggestion",
+      { method: "POST", body: JSON.stringify(body) }),
+  updateRelationship: (id: number, body: Record<string, unknown>) =>
+    request<Relationship>(`/api/relationships/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteRelationship: (id: number) =>
+    request<void>(`/api/relationships/${id}`, { method: "DELETE" }),
+
+  exportSiteGeometry: (workspaceId: number) =>
+    request<Record<string, unknown>>(`/api/export/site-geometry?workspace_id=${workspaceId}`),
 
   // preview
   startPreview: (id: number) =>

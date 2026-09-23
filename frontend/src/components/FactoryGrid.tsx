@@ -222,12 +222,31 @@ export default function FactoryGrid({
         {showFootprints && (
           <Layer listening={false}>
             {map.cameras.filter((c) => c.floor_polygon).map((camera) => {
-              const flat = camera.floor_polygon!.flatMap(([x, y]) => worldToScreen(view, x, y));
+              const polygon = camera.floor_polygon!;
+              const flat = polygon.flatMap(([x, y]) => worldToScreen(view, x, y));
               const selected = camera.camera_id === selectedCameraId;
+              const mapped = camera.area_is_mapped_coverage;
+              // A mapped-coverage area is where the floor mapping works. It says
+              // nothing about where the camera physically hangs, so it is drawn
+              // differently and labelled at its centre rather than at a marker.
+              const cx = polygon.reduce((a, p) => a + p[0], 0) / polygon.length;
+              const cy = polygon.reduce((a, p) => a + p[1], 0) / polygon.length;
+              const [lx, ly] = worldToScreen(view, cx, cy);
               return (
-                <Line key={`fp-${camera.camera_id}`} points={flat} closed
-                      fill={selected ? "rgba(29,78,216,0.20)" : "rgba(29,78,216,0.10)"}
-                      stroke="rgba(29,78,216,0.45)" strokeWidth={1} />
+                <Group key={`fp-${camera.camera_id}`}>
+                  <Line points={flat} closed
+                        fill={selected ? "rgba(29,78,216,0.20)" : "rgba(29,78,216,0.10)"}
+                        stroke="rgba(29,78,216,0.45)" strokeWidth={1}
+                        dash={mapped ? [7, 5] : undefined} />
+                  {mapped && !camera.position && (
+                    <>
+                      <Text x={lx - 70} y={ly - 14} width={140} align="center"
+                            text={camera.name} fontSize={11} fontStyle="bold" fill="#16202f" />
+                      <Text x={lx - 70} y={ly} width={140} align="center"
+                            text="mapped floor area" fontSize={10} fill="#5a6779" />
+                    </>
+                  )}
+                </Group>
               );
             })}
           </Layer>
@@ -314,7 +333,9 @@ export default function FactoryGrid({
                 <Text x={sx + 12} y={sy - 18} text={camera.name} fontSize={11}
                       fontStyle="bold" fill="#16202f" />
                 <Text x={sx + 12} y={sy - 5}
-                      text={`${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)} m`}
+                      text={camera.is_approximate
+                        ? "Approximate camera position"
+                        : `${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)} m`}
                       fontSize={10} fill="#5a6779" />
               </Group>
             );
@@ -323,10 +344,11 @@ export default function FactoryGrid({
       </Stage>
 
       <div className="plan-legend plan-legend-right">
-        <strong>Metric factory grid.</strong> World X/Y in metres, Z up. 0° heading points to the
-        top of the map (world +Y) and increases clockwise. A dashed ring marks a camera whose
-        position was entered by hand rather than solved — those coordinates are approximate.
-        Shaded areas are geometric floor coverage only and ignore machinery, racking and walls.
+        <strong>Metric floor grid.</strong> Positions in metres from the area's origin.
+        A dashed outline is the floor area a camera's mapping covers — that is where its
+        measurements work, not where the camera hangs. A dashed ring round a marker means the
+        position was typed in by hand and is approximate. Shaded areas are geometry only: they
+        ignore machinery, racking and walls.
       </div>
     </div>
   );

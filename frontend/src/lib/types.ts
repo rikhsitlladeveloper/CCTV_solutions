@@ -54,6 +54,7 @@ export interface Camera {
   last_test_detail: string | null;
   created_at: string;
   updated_at: string;
+  coordinate_system_id: number | null;
   location: LocationPath;
   placement: Placement | null;
 }

@@ -368,6 +368,10 @@ def save_observations(camera_id: int, payload: ObservationBulkIn,
         for existing in list(camera.observations):
             db.delete(existing)
         db.flush()
+        # The relationship still holds the deleted rows until it is reloaded.
+        # Reusing one of those as an "existing" record would attach the update to
+        # a doomed object, and the save would silently do nothing.
+        db.refresh(camera)
 
     existing_by_point = {o.reference_point_id: o for o in camera.observations}
     for item in payload.observations:

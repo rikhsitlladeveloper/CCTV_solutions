@@ -8,9 +8,12 @@ Everything runs on your own hardware: the database, the uploaded floor plans,
 the credential encryption key and all video processing. Nothing is sent to an
 external service.
 
-It also positions cameras in a shared **metric factory coordinate system**, with
-floor-plane and full-pose calibration, validation against held-out survey points,
-and a documented calibration export for downstream services.
+A guided seven-step setup takes an installer from a camera on the wall to a
+system that reports positions in metres on the floor — **connect cameras, create
+an area, add measured floor points, match them in each picture, calculate the
+mapping, check the accuracy, connect the cameras together** — without ever asking
+for a coordinate or a rotation. Full 3D calibration remains available under
+Advanced.
 
 **Scope.** Registration, connection testing, preview, physical location,
 floor-plan placement, and camera geometry/calibration. It deliberately does *not*
@@ -116,6 +119,20 @@ live preview, stream/profile details, the marker and direction on the plan,
 installation notes, and edit/retest actions. Connection status, factory
 calibration status and floor-plan placement are shown as three separate facts.
 
+### Guided setup
+The default installer flow. Each step states what to do in plain terms, warns
+about the mistakes that actually happen (points in a line, clustered in one
+corner, matched against the wrong stream size), and keeps the technical detail
+behind Advanced disclosures. Calculating a mapping runs as a job with progress
+and a plain-language failure; nothing is put into service until explicitly
+activated.
+
+### Camera relationships
+Which views share ground, and which exits lead where, with plausible walking
+times. Three states are distinguishable: unknown, allowed and explicitly
+excluded — a missing record is never read as impossible. Zones can be drawn
+straight on a camera picture with no calibration at all.
+
 ### Factory map
 Every camera in one blank metric grid — no floor plan required. Zoom, pan, fit to
 grid or to cameras, camera markers with heading and geometric floor coverage,
@@ -184,6 +201,13 @@ border meets the floor plane. They ignore machinery, racking, walls and people.
 
 **Consistency is not accuracy.** The multi-camera check shows whether cameras
 agree with each other. They can agree and all be wrong.
+
+**Placing a pin is not measuring.** Clicking the grid records where you say a
+mark is. The UI says so where it matters.
+
+**An absent relationship is unknown, not impossible.** Only an explicit exclusion
+states that two views have no direct association, and even then people can travel
+between them via other cameras.
 
 ---
 
@@ -349,7 +373,7 @@ documents each one and contains no secrets.
 ./backend/test.sh
 ```
 
-145 tests. Registration and media: credential encryption and exposure, the
+194 tests. Registration and media: credential encryption and exposure, the
 outbound host policy, ONVIF discovery against a simulated device (WS-Security
 digest verification, `XAddr` rewriting, auth failures), ffmpeg error
 classification, preview session limits and cleanup, camera CRUD, keep-vs-clear
@@ -366,6 +390,14 @@ refusal, fisheye rejection, malformed matrices and non-finite input, revision
 persistence and explicit activation, coordinate-system redefinition protection,
 multi-camera comparison, credential-free export, and in-place schema migration
 of a first-release database.
+
+Guided setup: known homography recovery, robust fitting with wrong
+correspondences, collinear and clustered point sets, distortion-aware coordinate
+consistency, forward and inverse projection, display-size independence of stored
+pixels, the strict separation of fitting and validation points, revision
+activation and stale handling, cameras using different subsets of one registry,
+directed transitions and graph validation, zones without calibration, and
+re-saving matches without losing them.
 
 ## Limitations
 

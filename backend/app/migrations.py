@@ -59,26 +59,73 @@ def _m002_floor_plan_world_alignment(conn: Connection) -> None:
         _add_column(conn, "floor_plans", column, ddl)
 
 
+def _create_index(conn: Connection, name: str, table: str, columns: list[str]) -> None:
+    """Create an index only if the table and every column it needs are present.
+
+    Normally ``create_all`` has already built the tables, but skipping instead of
+    raising means a partially-built database degrades to a missing index rather
+    than a server that will not start.
+    """
+    if table not in inspect(conn).get_table_names():
+        return
+    present = _columns(conn, table)
+    missing = [c for c in columns if c not in present]
+    if missing:
+        log.warning("migration: skipping index %s; %s lacks %s", name, table, missing)
+        return
+    conn.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({', '.join(columns)})"))
+
+
 def _m003_indexes(conn: Connection) -> None:
-    statements = [
-        "CREATE INDEX IF NOT EXISTS ix_calibration_active "
-        "ON calibration_revisions (camera_id, is_active)",
-        "CREATE INDEX IF NOT EXISTS ix_observation_camera "
-        "ON point_observations (camera_id, role)",
-        "CREATE INDEX IF NOT EXISTS ix_intrinsics_active "
-        "ON camera_intrinsics (camera_id, is_active)",
-    ]
-    tables = set(inspect(conn).get_table_names())
-    for stmt in statements:
-        target = stmt.split(" ON ")[1].split(" ")[0]
-        if target in tables:
-            conn.execute(text(stmt))
+    _create_index(conn, "ix_calibration_active", "calibration_revisions", ["camera_id", "is_active"])
+    _create_index(conn, "ix_observation_camera", "point_observations", ["camera_id", "role"])
+    _create_index(conn, "ix_intrinsics_active", "camera_intrinsics", ["camera_id", "is_active"])
+
+
+def _m004_workspace_fields(conn: Connection) -> None:
+    """Shared floor frames gain workspace descriptions."""
+    for column, ddl in [
+        ("floor_id", "INTEGER"),
+        ("x_axis_description", "TEXT"),
+        ("workspace_width_m", "FLOAT"),
+        ("workspace_length_m", "FLOAT"),
+        ("surface_description", "TEXT"),
+    ]:
+        _add_column(conn, "coordinate_systems", column, ddl)
+
+
+def _m005_reference_point_role(conn: Connection) -> None:
+    """Points gain a default role. Existing points keep being fitted against,
+    which is what they were already used for - nothing is reclassified."""
+    _add_column(conn, "world_reference_points", "role", "VARCHAR(20)")
+    if "world_reference_points" in inspect(conn).get_table_names():
+        conn.execute(text(
+            "UPDATE world_reference_points SET role = 'calibration' WHERE role IS NULL"))
+
+
+def _m006_revision_coverage(conn: Connection) -> None:
+    for column, ddl in [
+        ("coverage_polygon_json", "TEXT"),
+        ("stale_reason", "TEXT"),
+    ]:
+        _add_column(conn, "calibration_revisions", column, ddl)
+
+
+def _m007_relationship_indexes(conn: Connection) -> None:
+    _create_index(conn, "ix_zone_camera", "monitored_zones", ["camera_id", "kind"])
+    _create_index(conn, "ix_relationship_pair", "camera_relationships",
+                  ["camera_a_id", "camera_b_id", "kind"])
 
 
 MIGRATIONS: list[Migration] = [
     Migration(1, "camera coordinate system reference", _m001_camera_coordinate_system),
     Migration(2, "floor plan world alignment", _m002_floor_plan_world_alignment),
     Migration(3, "calibration lookup indexes", _m003_indexes),
+    Migration(4, "workspace fields on coordinate systems", _m004_workspace_fields),
+    Migration(5, "reference point role", _m005_reference_point_role),
+    Migration(6, "calibration coverage polygon", _m006_revision_coverage),
+    Migration(7, "zone and relationship indexes", _m007_relationship_indexes),
 ]
 
 SCHEMA_VERSION = max(m.version for m in MIGRATIONS)

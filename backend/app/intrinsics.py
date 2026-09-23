@@ -20,6 +20,12 @@ import numpy as np
 from .geometry import GeometryError, require_finite
 
 SUPPORTED_MODELS = {"pinhole"}
+
+# cv2.undistortPoints inverts the distortion model iteratively and defaults to a
+# handful of iterations, which leaves a fraction of a pixel of residual. That is
+# harmless on screen but shows up as sub-millimetre floor error once a pixel is
+# mapped through a homography, so the loop is run to convergence instead.
+_UNDISTORT_CRITERIA = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 60, 1e-9)
 # OpenCV's pinhole distortion vector: k1 k2 p1 p2 [k3 [k4 k5 k6 [s1..s4 [taux tauy]]]]
 VALID_DISTORTION_LENGTHS = {0, 4, 5, 8, 12, 14}
 
@@ -174,14 +180,15 @@ class Intrinsics:
     def undistort_points(self, pixels) -> np.ndarray:
         """Distorted pixels -> undistorted pixels in the same K."""
         pts = require_finite(pixels, "Image points").reshape(-1, 1, 2).astype(np.float64)
-        out = cv2.undistortPoints(pts, self.camera_matrix, self._dist_for_cv(),
-                                  P=self.camera_matrix)
+        out = cv2.undistortPointsIter(pts, self.camera_matrix, self._dist_for_cv(),
+                                      None, self.camera_matrix, _UNDISTORT_CRITERIA)
         return out.reshape(-1, 2)
 
     def pixel_to_camera_ray(self, u: float, v: float) -> np.ndarray:
         """A distorted image pixel -> unit ray in the optical camera frame."""
         pts = np.array([[[float(u), float(v)]]], dtype=np.float64)
-        normalised = cv2.undistortPoints(pts, self.camera_matrix, self._dist_for_cv())
+        normalised = cv2.undistortPointsIter(pts, self.camera_matrix, self._dist_for_cv(),
+                                             None, None, _UNDISTORT_CRITERIA)
         x, y = normalised.reshape(2)
         ray = np.array([x, y, 1.0], dtype=float)
         norm = float(np.linalg.norm(ray))

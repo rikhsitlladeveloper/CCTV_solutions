@@ -34,7 +34,11 @@ external dependency at runtime — no cloud service, no message broker, no GPU.
 
 | Module | Lines | Responsibility |
 | --- | ---: | --- |
-| `geometry.py` | 510 | Frames, rotations, poses, ray/plane intersection. **The single source of every convention.** |
+| `geometry.py` | ~540 | Frames, rotations, poses, ray/plane intersection. **The single source of every convention.** |
+| `floormapping.py` | 500 | The guided pipeline: image-to-floor homography, coverage, held-out scoring. |
+| `relationships.py` | 240 | Graph validation, overlap suggestion, polygon intersection. |
+| `markers.py` | 220 | Optional ArUco assistance; proposes matches, never asserts positions. |
+| `jobs.py` | 100 | In-process job runner so long work has one honest progress pattern. |
 | `calibration.py` | 643 | Solvers: floor homography, solvePnP pose, checkerboard intrinsics. |
 | `positioning.py` | 597 | Projection with a stored calibration, validation scoring, export, multi-camera comparison. |
 | `intrinsics.py` | 258 | The pinhole model, distortion, and binding a calibration to one image geometry. |
@@ -118,6 +122,34 @@ Sessions are capped, idle-reaped (30 s default), lifetime-capped (10 min), and
 torn down on client disconnect. ffmpeg is always launched with an argument list,
 never a shell, so nothing in a camera record can be interpolated into a command.
 
+### The guided floor mapping
+
+Most installations never need a camera pose. They need to turn a pixel into a
+floor position, and that is a flat-plane homography:
+
+```
+PUT  /api/setup/cameras/{id}/matches       pixels ↔ surveyed points
+POST /api/setup/cameras/{id}/calculate-mapping
+   → read the image geometry
+   → undistort with stored intrinsics if they match, else keep raw pixels
+   → findHomography(floor → image, RANSAC)   threshold genuinely in pixels
+   → refit on inliers alone
+   → check conditioning, invertibility, degeneracy
+   → coverage polygon = convex hull of the inliers
+   → new revision, inactive
+POST .../check-accuracy      held-out points only
+POST .../activate-mapping    explicit
+```
+
+`H_image_to_floor` maps homogeneous image coordinates to floor XY. Exactly one
+pixel space is used — `raw` or `undistorted` with the stored camera matrix —
+recorded on the result and applied identically in calibration, projection,
+validation and export. Normalised camera coordinates are never mixed in.
+
+**A homography is not a pose.** It describes one plane and cannot say where the
+camera is, so no XYZ or orientation is derived from it. Cameras mapped this way
+appear on the map as their *covered floor area*, not as a marker.
+
 ### Solving a pose
 
 ```
@@ -164,6 +196,17 @@ These are deliberately separate columns and are never conflated in the UI:
 
 A camera can be online and uncalibrated, or calibrated and unreachable.
 
+### Three relationship states
+
+The graph distinguishes them deliberately:
+
+* **unknown** — no record; nothing established either way.
+* **allowed** — an overlap or transition someone entered.
+* **excluded** — an explicit record that two views have no *direct* association.
+  Travel via other cameras remains possible.
+
+A missing record is never read as a confirmed impossibility.
+
 ### Coordinate-system integrity
 
 Coordinates only mean something relative to a physical origin. Three guards keep
@@ -174,8 +217,11 @@ that honest:
   active calibration in the frame becomes `needs_recalibration`.
 * Re-measuring a reference point flags calibrations solved from it.
 * Moving a camera to a different frame invalidates calibrations from the old one.
+* Changing a point's role changes the fitting/validation split, so mappings using
+  it go stale.
+* Redrawing a zone marks relationships built on it for review.
 
-Nothing is silently reinterpreted.
+Nothing is silently reinterpreted, and a stale mapping cannot be activated.
 
 ---
 
@@ -185,7 +231,9 @@ React 19 + TypeScript, built by Vite, served as static files by the backend.
 
 | Area | Module | Lines |
 | --- | --- | ---: |
-| Position & Calibration workspace | `pages/CameraCalibrationPage.tsx` | 1321 |
+| Guided setup (the default flow) | `pages/SetupPage.tsx` | ~1250 |
+| Camera relationships | `pages/RelationshipsPage.tsx` | ~600 |
+| Position & Calibration (advanced) | `pages/CameraCalibrationPage.tsx` | 1321 |
 | Registration wizard | `pages/RegisterWizardPage.tsx` | 998 |
 | Factory map | `pages/FactoryMapPage.tsx` | 543 |
 | Camera detail | `pages/CameraDetailPage.tsx` | 529 |
@@ -201,6 +249,14 @@ continuous pan/zoom), Three.js for the 3D view.
 
 `Scene3D` is lazy-loaded — Three.js is roughly 250 kB gzipped and most sessions
 never open it, so the main bundle stays at ~222 kB gzipped.
+
+### Installer vocabulary
+
+The default flow states everything in what an installer measures and clicks.
+Coordinates, rotations, matrices, solver settings and transform conventions live
+behind **Advanced** disclosures or on the advanced calibration page. Three badges
+are kept separate — connection, calibration, validation — because conflating them
+is how a camera ends up trusted for something it was never checked for.
 
 ### Two frontend gotchas worth knowing
 

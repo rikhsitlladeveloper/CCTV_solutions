@@ -39,11 +39,13 @@ loaded into the run and fail on missing imports.
 
 | File | Tests | Covers |
 | --- | ---: | --- |
+| `test_calibration_api.py` | 33 | Advanced calibration API, revisions, validation, projection, export, redefinition protection, migrations, demo data |
+| `test_setup_api.py` | 32 | The guided flow end to end: workspaces, points, matching, mapping jobs, accuracy, activation, staleness, zones, relationships, export |
 | `test_geometry.py` | 32 | Transform inversion, RPY/quaternion/matrix round-trips, gimbal lock, heading sign, ray/plane edge cases, polygon clipping |
 | `test_calibration.py` | 31 | Synthetic pose and homography recovery, distortion, outliers, planar ambiguity, degeneracy, checkerboard, intrinsics validation |
-| `test_calibration_api.py` | 33 | End-to-end calibration API, revisions, validation, projection, export, redefinition protection, migrations, demo data |
 | `test_api.py` | 18 | Auth, camera CRUD, credential exposure, floor plans, placement review |
 | `test_security.py` | 17 | Encryption, hashing, sanitising, network policy, log redaction |
+| `test_floormapping.py` | 17 | The guided pipeline: recovery, mis-clicks, mis-measurements, distortion consistency, horizon, coverage, pre-flight checks |
 | `test_media.py` | 8 | URL construction, ffmpeg error classification, preview session limits |
 | `test_onvif.py` | 6 | Discovery, XAddr rewriting, WS-Security digest, auth failure |
 
@@ -76,6 +78,9 @@ accuracy on real hardware, and the tests say so.
 | Task | Start here |
 | --- | --- |
 | A coordinate or rotation convention | `backend/app/geometry.py`, then run `test_geometry.py` |
+| The guided mapping pipeline | `backend/app/floormapping.py` |
+| Installer wording or the step flow | `frontend/src/pages/SetupPage.tsx` |
+| The relationship graph | `backend/app/relationships.py`, `frontend/src/pages/RelationshipsPage.tsx` |
 | A solver | `backend/app/calibration.py` |
 | Projection or validation scoring | `backend/app/positioning.py` |
 | The intrinsic model | `backend/app/intrinsics.py` |
@@ -142,6 +147,17 @@ errors with an explanation, not best-effort guesses.
 revision. Activation is a separate call. Prior revisions are kept.
 
 **Colour is never the only signal.** Every badge carries a word and a glyph.
+
+**The default flow speaks the installer's language.** Coordinates, rotations,
+matrices and solver settings belong behind an `<Advanced>` disclosure or on the
+advanced calibration page. If a normal step needs the word "homography" to make
+sense, the step needs rewriting, not a glossary.
+
+**Deleting rows from a relationship needs a refresh.** After `db.delete()` plus
+`flush()`, the collection still holds the doomed objects; reusing one as an
+"existing" record makes the save silently do nothing. `db.refresh(camera)` before
+rebuilding the index. Two endpoints were fixed for exactly this, and there are
+regression tests for both.
 
 ---
 

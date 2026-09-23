@@ -232,6 +232,8 @@ class CameraOut(ORMModel):
     last_test_detail: str | None
     created_at: datetime
     updated_at: datetime
+    # Which factory/workspace frame this camera is positioned in, if any.
+    coordinate_system_id: int | None = None
     location: LocationPathOut = LocationPathOut()
     placement: PlacementOut | None = None
 

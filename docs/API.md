@@ -147,6 +147,202 @@ Coordinates are normalised to `[0,1]`, so resizing the viewer never moves a mark
 
 ---
 
+## Guided setup
+
+The installer-facing flow. Everything here is expressed in measured floor
+positions; no camera pose or rotation is ever required.
+
+### Workspaces
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/setup/workspaces?floor_id=` | List |
+| `POST` | `/api/setup/workspaces` | Create the area |
+| `GET`/`PATCH` | `/api/setup/workspaces/{id}` | Read, edit |
+| `POST` | `/api/setup/workspaces/{id}/cameras/{camera_id}` | Put a camera in the area |
+
+```json
+{
+  "name": "Packaging bay", "floor_id": 3,
+  "width_m": 24, "length_m": 16,
+  "origin_description": "Inside corner of column A1 where it meets the floor.",
+  "x_axis_description": "East along the north wall towards the loading doors.",
+  "surface_description": "One continuous flat concrete floor.",
+  "max_ground_error_m": 0.25, "min_reference_points": 6
+}
+```
+
+**One frame per floor.** Creating a second area on a floor that already has one
+returns `409` naming the existing workspace, because areas on a floor must share
+an origin for their measurements to be comparable. A genuinely separate surface —
+a mezzanine, a ramp — belongs on its own floor record.
+
+`PATCH` returns `409` if the origin or axis description changes while mappings
+exist; re-send with `confirm_redefinition: true` and every affected mapping is
+marked stale.
+
+Assigning a camera that already belongs elsewhere marks its old mapping stale and
+reports `previous_mapping_marked_stale`.
+
+### Floor points
+
+| Method | Path |
+| --- | --- |
+| `GET`/`POST` | `/api/setup/workspaces/{id}/points` |
+| `PATCH`/`DELETE` | `/api/setup/points/{point_id}` |
+
+```json
+{ "workspace_id": 1, "code": "FP-05", "name": "Drain cover, centre",
+  "x": 9.0, "y": 8.0, "role": "calibration",
+  "measurement_notes": "Tape from column A1.", "uncertainty_m": 0.005 }
+```
+
+`role` is `calibration` (used to build the mapping) or `validation` (held back,
+never fitted, so it can test the result). The role belongs to the point, so the
+split cannot drift between cameras.
+
+Re-measuring `x`/`y`, changing `role`, or deleting a point marks every mapping
+built from it stale.
+
+### Matching
+
+| Method | Path |
+| --- | --- |
+| `GET`/`PUT` | `/api/setup/cameras/{id}/matches` |
+| `DELETE` | `/api/setup/cameras/{id}/matches/{observation_id}` |
+
+```json
+{ "image_width": 1920, "image_height": 1080, "replace_existing": true,
+  "matches": [{ "reference_point_id": 12, "pixel_u": 812.5, "pixel_v": 640.0 }] }
+```
+
+Pixels are in the source image's own coordinates, so browser zoom and window size
+are irrelevant. `GET` also returns `unmatched_points`, live `issues` (near-collinear,
+clustered in one part of the frame, duplicates, mixed image sizes) and
+`ready_to_calculate`.
+
+### Calculate, check, activate
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `POST` | `/api/setup/cameras/{id}/calculate-mapping` | `202` with a job to poll |
+| `GET` | `/api/setup/jobs/{job_id}` | Progress, then result or a plain failure |
+| `POST` | `/api/setup/cameras/{id}/check-accuracy` | Held-out points only |
+| `POST` | `/api/setup/cameras/{id}/activate-mapping` | Explicit |
+| `POST` | `/api/setup/cameras/{id}/project` | Pixel ↔ floor position |
+| `POST` | `/api/setup/consistency-check` | Same spot in several cameras |
+
+`calculate-mapping` takes `image_width`, `image_height` and an optional
+`tolerance_px`. **There is no solver to choose.** The result carries the
+homography and its inverse, which points were used and which were rejected by
+name, the covered floor polygon, the conditioning, the pixel convention and any
+warnings.
+
+A failed job explains itself:
+
+```json
+{ "status": "failed",
+  "error": "A mapping needs at least 4 calibration points; 2 are matched.",
+  "hint": "Match more measured floor points, or change a validation point to a calibration point." }
+```
+
+`check-accuracy` scores only points whose role is `validation`. It records a
+result and reports mean, median and worst error in metres, the number and spread
+of the points, and what the check does and does not cover. It never activates
+anything.
+
+`activate-mapping` returns `409` for a stale mapping, naming what changed.
+
+`project` accepts either `{pixel_u, pixel_v}` or `{x, y}` and flags
+`within_checked_area: false` when the answer is extrapolation beyond the measured
+points.
+
+`consistency-check` is labelled **Cross-camera consistency** without a surveyed
+position, and **Accuracy against a measured position** when given one.
+
+---
+
+## Markers
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/markers/dictionaries` |
+| `POST` | `/api/cameras/{id}/detect-markers` |
+| `POST` | `/api/cameras/{id}/accept-markers` |
+
+Detection returns *proposals* with per-marker issues: unknown IDs, duplicate
+physical IDs in one frame, markers too small or too oblique, insufficient spread.
+Nothing becomes an observation until accepted. A marker ID identifies which
+marker it is, never where it is.
+
+---
+
+## Zones
+
+| Method | Path |
+| --- | --- |
+| `GET`/`POST` | `/api/cameras/{id}/zones` |
+| `PATCH`/`DELETE` | `/api/zones/{zone_id}` |
+
+```json
+{ "name": "Dispatch doorway", "kind": "entrance",
+  "image_polygon": [[700, 560], [1220, 570], [1240, 860], [690, 850]],
+  "image_width": 1920, "image_height": 1080 }
+```
+
+`kind` is `monitored`, `entrance` or `exit`. Zones need no calibration; when the
+camera has an active mapping the zone also gets a floor polygon, tagged with the
+revision that produced it. Redrawing a zone marks dependent relationships
+`needs_review`. Deleting one in use returns `409`.
+
+---
+
+## Camera relationships
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/relationships?workspace_id=&suggest=` |
+| `POST` | `/api/relationships` |
+| `POST` | `/api/relationships/accept-suggestion` |
+| `PATCH`/`DELETE` | `/api/relationships/{id}` |
+
+```json
+{ "kind": "transition", "camera_a_id": 1, "camera_b_id": 3,
+  "zone_a_id": 7, "zone_b_id": 9,
+  "min_travel_seconds": 4, "max_travel_seconds": 25,
+  "verification": "unverified" }
+```
+
+Three kinds: `overlap`, `transition` (directed; the reverse is a separate
+record) and `excluded`.
+
+Rejected with `422`: self-links, a transition without both travel bounds, a
+minimum above the maximum, a zone belonging to the wrong camera, a metric overlap
+across different coordinate systems, duplicates, and an exclusion contradicting an
+existing link.
+
+`GET` also returns overlap `suggestions` derived from mapped coverage. Accepting
+one records it as `suggested_by_geometry` and **unverified** — geometry cannot see
+walls or racking.
+
+The `summary` separates `pairs_with_a_record` from `pairs_unknown` and states
+that an absent record means unknown, not impossible.
+
+---
+
+## Site geometry export
+
+### `GET /api/export/site-geometry?workspace_id=`
+
+Everything a tracking service needs: the workspace and its origin description,
+reference points, each camera's floor mapping with its pixel convention, source
+image size, covered area and accuracy record, all zones, the relationship graph,
+and explicit limitations.
+
+No credentials, host addresses or stream URLs. Nothing about people.
+
+---
+
 ## Coordinate systems
 
 ### `GET /api/coordinate-systems/conventions`

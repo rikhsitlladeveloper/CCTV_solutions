@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..geometry import CONVENTIONS, clip_polygon_to_rect, frustum_floor_polygon
 from ..intrinsics import intrinsics_from_fov
+import json
+
 from ..models import (
     CalibrationMethod, CalibrationStatus, Camera, CoordinateSystem, FloorPlan, WorldReferencePoint,
 )
@@ -65,7 +67,21 @@ def _map_camera(camera: Camera, footprints: bool,
     if model.intrinsics is not None:
         entry.horizontal_fov_deg, entry.vertical_fov_deg = model.intrinsics.fov_degrees
 
-    # A floor footprint needs both a pose and a lens model.
+    # A camera mapped by floor homography has no pose, but it does know which
+    # patch of floor its measured points cover. That area is what to draw: it is
+    # where the mapping works, not where the camera hangs.
+    if footprints and model.pose is None and revision.coverage_polygon_json:
+        polygon = json.loads(revision.coverage_polygon_json)
+        if cs is not None and polygon:
+            polygon, trimmed = clip_polygon_to_rect(
+                polygon, cs.grid_min_x, cs.grid_min_y, cs.grid_max_x, cs.grid_max_y)
+            entry.floor_polygon_clipped = trimmed
+        if len(polygon) >= 3:
+            entry.floor_polygon = [[round(x, 3), round(y, 3)] for x, y in polygon]
+            entry.area_is_mapped_coverage = True
+        return entry
+
+    # A projected view footprint needs both a pose and a lens model.
     if footprints and model.pose is not None:
         intr = model.intrinsics
         if intr is None and revision.approx_hfov_deg:
