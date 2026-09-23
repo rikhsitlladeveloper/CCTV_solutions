@@ -21,17 +21,29 @@ person tracking, recognition, analytics, or floor-plane calibration.
 ./start.sh     # serves the API and the UI on http://127.0.0.1:8000
 ```
 
-On first start-up the server creates an operator account and prints the
-password **once** to the console:
+On first start-up the server creates an operator account and prints a randomly
+generated password **once** to the console. Copy it before you lose the
+scrollback — it is stored hashed and cannot be read back later:
 
 ```
 ====================================================================
   Numenor operator account created.
   username: operator
-  password: 3nP7q-KzvT1w
+  password: <a random password appears here — yours will differ>
   This password is shown once. Set NUMENOR_ADMIN_PASSWORD to choose your own.
 ====================================================================
 ```
+
+To pick your own password instead, set it before starting:
+
+```bash
+NUMENOR_ADMIN_PASSWORD='your-choice' ./start.sh
+```
+
+**Lost the password?** It is stored as a scrypt hash, so it cannot be
+recovered — only replaced. Start once with `NUMENOR_ADMIN_PASSWORD` set as
+above; that overwrites the account, and plain `./start.sh` works from then on.
+Camera credentials are unaffected: they are encrypted with a separate key.
 
 Requirements: Python 3.10+, Node 18+, and `ffmpeg` (used for snapshots and
 browser-compatible preview).
