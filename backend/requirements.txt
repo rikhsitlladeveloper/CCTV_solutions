@@ -6,3 +6,8 @@ cryptography==44.0.0
 httpx==0.28.1
 python-multipart==0.0.20
 pillow==11.1.0
+
+# Camera geometry and calibration. opencv-python-headless has no GUI/X11
+# dependencies, which suits a server install.
+numpy==2.2.1
+opencv-python-headless==4.11.0.86
