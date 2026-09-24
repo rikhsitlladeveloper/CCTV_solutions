@@ -118,6 +118,23 @@ def _m007_relationship_indexes(conn: Connection) -> None:
                   ["camera_a_id", "camera_b_id", "kind"])
 
 
+def _m008_visual_placement(conn: Connection) -> None:
+    """Mount type and aim target, so a visual placement can be replayed."""
+    for column, ddl in [
+        ("mount_type", "VARCHAR(20)"),
+        ("aim_target_x", "FLOAT"),
+        ("aim_target_y", "FLOAT"),
+        ("aim_target_z", "FLOAT"),
+    ]:
+        _add_column(conn, "calibration_revisions", column, ddl)
+
+
+def _m009_scene_indexes(conn: Connection) -> None:
+    _create_index(conn, "ix_scene_objects_scene", "scene_objects", ["scene_id", "kind"])
+    _create_index(conn, "ix_camera_functions_camera", "camera_functions", ["camera_id", "kind"])
+    _create_index(conn, "ix_checkpoints_session", "session_checkpoints", ["session_id"])
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "camera coordinate system reference", _m001_camera_coordinate_system),
     Migration(2, "floor plan world alignment", _m002_floor_plan_world_alignment),
@@ -126,6 +143,8 @@ MIGRATIONS: list[Migration] = [
     Migration(5, "reference point role", _m005_reference_point_role),
     Migration(6, "calibration coverage polygon", _m006_revision_coverage),
     Migration(7, "zone and relationship indexes", _m007_relationship_indexes),
+    Migration(8, "visual placement mount and aim", _m008_visual_placement),
+    Migration(9, "scene and function indexes", _m009_scene_indexes),
 ]
 
 SCHEMA_VERSION = max(m.version for m in MIGRATIONS)

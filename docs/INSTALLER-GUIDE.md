@@ -1,12 +1,166 @@
 # Installer guide
 
 Getting cameras from "on the wall" to "the system knows where things are on the
-floor", in seven steps. Open **Setup** and work straight through it.
+floor".
 
 Almost every calibration problem is a measurement problem, not a software
 problem. The one rule worth remembering: **the system only knows what you
 measure.** Clicking a spot on a grid records where you *say* something is; it
 does not measure anything.
+
+## Two ways through, same data underneath
+
+| | **Workspace** | **Guided setup** |
+| --- | --- | --- |
+| Where | the **Workspace** tab | the **Guided setup** tab |
+| Shape | a drawing board: build the scene, drop cameras in, aim them | seven numbered steps, one screen each |
+| Best for | laying out a site visually, seeing coverage, configuring what cameras do | working methodically through one camera's measurements |
+
+They are two views of one set of records, not two systems. A camera mapped in
+Guided setup shows its coverage in the Workspace immediately, and a camera
+placed in the Workspace appears in Guided setup's camera list. Use whichever
+suits the moment; you can switch at any point.
+
+The Workspace is described first, because it is where most commissioning now
+starts. The seven steps follow, and they remain the reference for the
+measurement detail.
+
+---
+
+# The commissioning workspace
+
+Open **Workspace**. Three panels: what is in the scene on the left, the scene
+itself in the middle, and details of whatever is selected on the right.
+
+Two modes, switched top right:
+
+* **Setup** — everything can be edited.
+* **Monitor** — the published scene, read-only, plus whatever live data exists.
+  Today that is camera pictures and nothing else: no detection service ships
+  with this system, and Monitor says so rather than drawing invented boxes.
+
+## Create the scene
+
+Pick an area, then build its floor:
+
+* **Draw it.** Choose Wall, Machine, Rack, Conveyor and so on from the palette
+  and click the scene. Boxes drop where you click; walls, conveyors and zones
+  are drawn corner by corner.
+* **Trace a floor plan.** Upload a plan image, set its scale by clicking two
+  points a known distance apart, and draw over it.
+* **Import a 3D model.** A GLB can be brought in and aligned to the floor.
+
+**A floor plan is never required.** An empty grid with a few boxes on it is a
+perfectly good scene, and most sites start that way.
+
+Everything drawn this way is marked **estimated** — it records what you say is
+there, at roughly the size you say it is. Only measured geometry is marked
+measured, and the badge on the scene tells you which you are looking at. That
+distinction is the whole reason the scene can be trusted: it never claims to be
+a survey.
+
+## Place and aim a camera
+
+Open the **Cameras** tab on the left. Cameras appear in one of three groups:
+
+* **Not in the scene** — nothing is known about where it is.
+* **Mapped, not placed** — it has a working floor mapping, so positions in its
+  picture already turn into real places, but where the camera itself hangs is
+  unknown. Its mapped patch of floor is drawn in the scene, dashed.
+* **Placed in this area** — its mount point and aim are known.
+
+Press **Place**, click where the camera is mounted, and say how high it is and
+what it is fixed to. No angles are typed in. Then **Aim here…** and click what
+it should look at; the cone follows.
+
+A placement made this way is **approximate** — you pointed at a spot, you did
+not measure one. It is drawn dashed and labelled as such everywhere.
+
+If the camera already has a solved mapping, the placement is saved but **not**
+switched on, because a drag must never quietly replace measured geometry. You
+are told this and offered the choice explicitly: keep the solved mapping, or use
+the hand placement. Nothing is deleted either way, and every revision stays on
+the camera's calibration page.
+
+## Align live view
+
+The **Align live view** button opens the camera picture beside the scene. You
+point at the same landmark twice — once in the picture, once on the floor plan —
+and the number and colour match on both sides.
+
+The frame is deliberately frozen rather than live: a moving picture cannot be
+clicked accurately, and a click has to be recorded against the exact frame it
+was made on. **Refresh frame** takes a new one when the view has changed. Your
+clicks are stored in the picture's own native pixels, so resizing the browser or
+zooming changes nothing.
+
+Two paths, chosen at the top:
+
+* **Floor mapping** — turns a position in the picture into a place on the floor.
+  Needs four or more landmarks that all lie flat on the same floor. Six or more,
+  spread across the whole frame rather than clustered in one corner, work far
+  better. This is what counting, zones and twin positions use.
+* **Full camera alignment** — works out where the camera hangs and how it is
+  angled, in three dimensions. Needs a lens calibration as well, and landmarks
+  at more than one height, because points that all lie flat leave the answer
+  ambiguous. This is what the 3D view, camera relationships and cross-camera
+  tracking need.
+
+The same landmarks serve both, so nothing is marked twice.
+
+Once a mapping is live, the picture gains an overlay: one metre of real floor
+projected through it. **Where the projected grid lies along the floor's own
+lines, the mapping fits; where it drifts, it does not.** Red spurs show how far
+each landmark's prediction misses its mark, in pixels. Both can be switched off.
+
+## What should this camera do?
+
+Each camera carries a list of functions. Counting lines and zone polygons are
+drawn directly on its picture, with numbered handles you can drag; the shape is
+stored in the frame's own pixels together with the frame size it was drawn
+against, so a later change of stream resolution is detected rather than silently
+mis-scaling the shape.
+
+Counting and zone watching work **on the picture** and need no calibration at
+all. Twin positions and cross-camera tracking need a floor mapping, and say so
+until one exists.
+
+Every function shows an honest status. **No detection service ships with this
+system.** Settings are stored and exported so a processing service can pick them
+up later; nothing here is analysing video, and the interface will not pretend
+that it is.
+
+## Camera links
+
+Tick **Camera links** to draw the relationships between cameras onto the scene:
+shared floor as a shaded patch, walking routes as a line. Verified links are
+solid green; anything only suggested by geometry stays dashed amber, because a
+guess must never read as a fact.
+
+Click one to get both cameras' pictures side by side. Walk the shared area and
+watch for the same person in both — if a link says they overlap and you cannot
+see that, the link is wrong however good the arithmetic looked. Record what you
+saw on the **Connections** page.
+
+## See what is ready
+
+**Readiness** lists nine capabilities and what each one still needs. It
+separates flatly:
+
+* what is **configured** (a counting line exists);
+* what is **possible** (the geometry supports it);
+* what is **running** (nothing, today — no processing service is connected).
+
+A walk-through session records checkpoints as you walk the floor: where the
+system thinks you are, where you actually were, and the difference. That is the
+only measurement of accuracy that involves the real building rather than the
+same numbers the mapping was fitted to.
+
+---
+
+# Guided setup, step by step
+
+Open **Guided setup** and work straight through it.
 
 ---
 

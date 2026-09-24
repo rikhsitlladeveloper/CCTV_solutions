@@ -36,6 +36,7 @@ external dependency at runtime — no cloud service, no message broker, no GPU.
 | --- | ---: | --- |
 | `geometry.py` | ~540 | Frames, rotations, poses, ray/plane intersection. **The single source of every convention.** |
 | `floormapping.py` | 500 | The guided pipeline: image-to-floor homography, coverage, held-out scoring. |
+| `scene.py` | 408 | The factory scene: object palette and footprints, visual placement to pose, function availability, readiness. |
 | `relationships.py` | 240 | Graph validation, overlap suggestion, polygon intersection. |
 | `markers.py` | 220 | Optional ArUco assistance; proposes matches, never asserts positions. |
 | `jobs.py` | 100 | In-process job runner so long work has one honest progress pattern. |
@@ -231,7 +232,10 @@ React 19 + TypeScript, built by Vite, served as static files by the backend.
 
 | Area | Module | Lines |
 | --- | --- | ---: |
-| Guided setup (the default flow) | `pages/SetupPage.tsx` | ~1250 |
+| Commissioning workspace | `pages/WorkspacePage.tsx` | ~1816 |
+| Align live view | `pages/AlignPage.tsx` | ~623 |
+| Capability readiness | `pages/ReadinessPage.tsx` | ~389 |
+| Guided setup | `pages/SetupPage.tsx` | ~1503 |
 | Camera relationships | `pages/RelationshipsPage.tsx` | ~600 |
 | Position & Calibration (advanced) | `pages/CameraCalibrationPage.tsx` | 1321 |
 | Registration wizard | `pages/RegisterWizardPage.tsx` | 998 |
@@ -241,7 +245,10 @@ React 19 + TypeScript, built by Vite, served as static files by the backend.
 | Metric grid (Konva) | `components/FactoryGrid.tsx` | 333 |
 | Floor-plan canvas (SVG) | `components/FloorPlanCanvas.tsx` | 321 |
 | 3D view (Three.js) | `components/Scene3D.tsx` | 224 |
-| Image point picker | `components/CameraImagePicker.tsx` | 204 |
+| Image point picker | `components/CameraImagePicker.tsx` | 216 |
+| Scene canvas, 2D (Konva) | `components/SceneCanvas2D.tsx` | 517 |
+| Scene view, 3D (Three.js) | `components/SceneView3D.tsx` | 297 |
+| Line and zone drawing | `components/PictureGeometryEditor.tsx` | 224 |
 
 Three rendering technologies, each chosen for its job: SVG for the floor-plan
 editor (few elements, crisp text), Konva for the metric grid (many markers,
@@ -260,12 +267,20 @@ is how a camera ends up trusted for something it was never checked for.
 
 ### Two frontend gotchas worth knowing
 
-* **The 3D view uses HTML labels, not 3D text.** drei's `<Text>` fetches a font
-  over the network and suspends the whole canvas until it resolves — which on an
-  offline factory install means a permanently blank view. Labels are DOM.
+* **3D labels are sprites, not 3D text and not DOM.** drei's `<Text>` fetches a
+  font over the network and suspends the whole canvas until it resolves — on an
+  offline factory install, a permanently blank view. drei's `<Html>` avoids that
+  but mounts a second React root per label, which throws
+  `NotFoundError: removeChild` when the canvas unmounts mid-render (switching to
+  Monitor, or back to 2D). `SceneView3D` paints label text into a 2D canvas and
+  shows it as a sprite: no network, no DOM, nothing to tear down.
 * **Graphics-engine cameras differ from optical cameras.** Three.js looks down
-  −Z with +Y up; OpenCV looks down +Z with +Y down. `Scene3D` builds frustums
+  −Z with +Y up; OpenCV looks down +Z with +Y down. The 3D views build frustums
   from the optical basis vectors explicitly rather than hiding the flip.
+* **With a placement tool armed, the scene's shape layers stop listening.**
+  Konva shapes cancel bubbling when clicked, so an armed "place camera" click
+  that landed on a machine — exactly where cameras point — would otherwise be
+  swallowed and do nothing at all.
 
 ---
 

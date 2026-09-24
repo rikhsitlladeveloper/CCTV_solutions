@@ -9,6 +9,10 @@ import type {
   AccuracyResponse, ConsistencyResult, FloorPoint, Job, MarkerDetection, MatchStatus,
   Relationship, RelationshipGraph, Workspace, Zone,
 } from "./setupTypes";
+import type {
+  CameraFunction, CommissioningSession, FactoryScene, FunctionCatalogueEntry, PaletteItem,
+  PlacementResult, Readiness, SceneAsset, SceneObject,
+} from "./sceneTypes";
 
 const TOKEN_KEY = "numenor.token";
 
@@ -292,6 +296,85 @@ export const api = {
   consistencyCheck: (body: Record<string, unknown>) =>
     request<ConsistencyResult>("/api/setup/consistency-check",
       { method: "POST", body: JSON.stringify(body) }),
+
+  // ---- factory scene ----
+  listScenes: (workspaceId?: number) =>
+    request<FactoryScene[]>(`/api/scenes${workspaceId ? `?workspace_id=${workspaceId}` : ""}`),
+  getScene: (id: number) => request<FactoryScene>(`/api/scenes/${id}`),
+  createScene: (body: Record<string, unknown>) =>
+    request<FactoryScene>("/api/scenes", { method: "POST", body: JSON.stringify(body) }),
+  updateScene: (id: number, body: Record<string, unknown>) =>
+    request<FactoryScene>(`/api/scenes/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  publishScene: (id: number, notes?: string) =>
+    request<FactoryScene>(`/api/scenes/${id}/publish`,
+      { method: "POST", body: JSON.stringify({ confirm: true, notes: notes ?? null }) }),
+  publishedScene: (id: number) =>
+    request<Record<string, unknown>>(`/api/scenes/${id}/published`),
+
+  scenePalette: () =>
+    request<{ items: PaletteItem[]; note: string }>("/api/scene-palette"),
+  addSceneObject: (sceneId: number, body: Record<string, unknown>) =>
+    request<SceneObject>(`/api/scenes/${sceneId}/objects`,
+      { method: "POST", body: JSON.stringify(body) }),
+  replaceSceneObjects: (sceneId: number, objects: Array<Record<string, unknown>>) =>
+    request<FactoryScene>(`/api/scenes/${sceneId}/objects`,
+      { method: "PUT", body: JSON.stringify({ objects }) }),
+  updateSceneObject: (sceneId: number, objectId: number, body: Record<string, unknown>) =>
+    request<SceneObject>(`/api/scenes/${sceneId}/objects/${objectId}`,
+      { method: "PATCH", body: JSON.stringify(body) }),
+  deleteSceneObject: (sceneId: number, objectId: number) =>
+    request<void>(`/api/scenes/${sceneId}/objects/${objectId}`, { method: "DELETE" }),
+
+  uploadSceneAsset: (sceneId: number, kind: string, file: File) => {
+    const fd = new FormData();
+    fd.append("kind", kind);
+    fd.append("file", file);
+    return request<SceneAsset>(`/api/scenes/${sceneId}/assets`, { method: "POST", body: fd });
+  },
+  setPlanScale: (sceneId: number, assetId: number, body: Record<string, unknown>) =>
+    request<SceneAsset>(`/api/scenes/${sceneId}/assets/${assetId}/scale`,
+      { method: "PUT", body: JSON.stringify(body) }),
+  alignModel: (sceneId: number, assetId: number, body: Record<string, unknown>) =>
+    request<SceneAsset>(`/api/scenes/${sceneId}/assets/${assetId}/model-alignment`,
+      { method: "PUT", body: JSON.stringify(body) }),
+  deleteSceneAsset: (sceneId: number, assetId: number) =>
+    request<void>(`/api/scenes/${sceneId}/assets/${assetId}`, { method: "DELETE" }),
+
+  // ---- visual placement ----
+  placeCamera: (cameraId: number, body: Record<string, unknown>) =>
+    request<PlacementResult>(`/api/cameras/${cameraId}/place`,
+      { method: "POST", body: JSON.stringify(body) }),
+
+  // ---- functions ----
+  functionCatalogue: () =>
+    request<{ functions: FunctionCatalogueEntry[]; note: string; processing_note: string }>(
+      "/api/function-catalogue"),
+  listFunctions: (cameraId: number) =>
+    request<CameraFunction[]>(`/api/cameras/${cameraId}/functions`),
+  addFunction: (cameraId: number, body: Record<string, unknown>) =>
+    request<CameraFunction>(`/api/cameras/${cameraId}/functions`,
+      { method: "POST", body: JSON.stringify(body) }),
+  updateFunction: (functionId: number, body: Record<string, unknown>) =>
+    request<CameraFunction>(`/api/functions/${functionId}`,
+      { method: "PATCH", body: JSON.stringify(body) }),
+  deleteFunction: (functionId: number) =>
+    request<void>(`/api/functions/${functionId}`, { method: "DELETE" }),
+
+  // ---- sessions and readiness ----
+  listSessions: (workspaceId?: number) =>
+    request<CommissioningSession[]>(
+      `/api/sessions${workspaceId ? `?workspace_id=${workspaceId}` : ""}`),
+  startSession: (body: Record<string, unknown>) =>
+    request<CommissioningSession>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+  addCheckpoint: (sessionId: number, body: Record<string, unknown>) =>
+    request<CommissioningSession>(`/api/sessions/${sessionId}/checkpoints`,
+      { method: "POST", body: JSON.stringify(body) }),
+  endSession: (sessionId: number) =>
+    request<CommissioningSession>(`/api/sessions/${sessionId}/end`, { method: "POST" }),
+  deleteSession: (sessionId: number) =>
+    request<void>(`/api/sessions/${sessionId}`, { method: "DELETE" }),
+  readiness: (workspaceId: number) =>
+    request<Readiness>(`/api/readiness?workspace_id=${workspaceId}`),
 
   // ---- markers ----
   markerDictionaries: () =>

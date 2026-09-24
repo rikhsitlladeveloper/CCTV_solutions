@@ -10,7 +10,10 @@ import LoginPage from "./pages/LoginPage";
 import MultiCameraCheckPage from "./pages/MultiCameraCheckPage";
 import RegisterWizardPage from "./pages/RegisterWizardPage";
 import RelationshipsPage from "./pages/RelationshipsPage";
+import ReadinessPage from "./pages/ReadinessPage";
 import SetupPage from "./pages/SetupPage";
+import AlignPage from "./pages/AlignPage";
+import WorkspacePage from "./pages/WorkspacePage";
 
 export default function App() {
   const [operator, setOperator] = useState<string | null>(null);
@@ -48,6 +51,9 @@ export default function App() {
         <Route path="/cameras/new" element={<RegisterWizardPage />} />
         <Route path="/cameras/:id" element={<CameraDetailPage />} />
         <Route path="/cameras/:id/calibration" element={<CameraCalibrationPage />} />
+        <Route path="/workspace" element={<WorkspacePage />} />
+        <Route path="/align" element={<AlignPage />} />
+        <Route path="/readiness" element={<ReadinessPage />} />
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/relationships" element={<RelationshipsPage />} />
         <Route path="/factory-map" element={<FactoryMapPage />} />
@@ -69,12 +75,11 @@ function TopBar({ operator, onSignOut }: { operator: string; onSignOut: () => vo
         <span className="brand-sub">Camera Setup</span>
       </div>
       <nav className="topnav">
-        <NavLink to="/setup">Setup</NavLink>
+        <NavLink to="/workspace">Workspace</NavLink>
         <NavLink to="/" end>Cameras</NavLink>
-        <NavLink to="/factory-map">Area map</NavLink>
+        <NavLink to="/setup">Guided setup</NavLink>
         <NavLink to="/relationships">Connections</NavLink>
-        <NavLink to="/floor-plans">Floor plans</NavLink>
-        <NavLink to="/multi-camera-check">Accuracy check</NavLink>
+        <NavLink to="/readiness">Readiness</NavLink>
       </nav>
       <div className="topbar-spacer" />
       <div className="topbar-user">

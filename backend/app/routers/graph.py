@@ -416,6 +416,8 @@ def export_site_geometry(workspace_id: int = Query(...), db: Session = Depends(g
     URLs, and nothing about people.
     """
     from ..geometry import CONVENTIONS
+    from ..models import Scene
+    from ..scene import FUNCTION_LABELS, function_status, object_to_dict, scene_provenance
 
     cs = db.get(CoordinateSystem, workspace_id)
     if not cs:
@@ -431,6 +433,7 @@ def export_site_geometry(workspace_id: int = Query(...), db: Session = Depends(g
     points = db.scalars(select(WorldReferencePoint).where(
         WorldReferencePoint.coordinate_system_id == cs.id)
         .order_by(WorldReferencePoint.code)).all()
+    scene = db.scalars(select(Scene).where(Scene.coordinate_system_id == cs.id)).first()
 
     camera_payload = []
     for camera in cameras:
@@ -441,6 +444,19 @@ def export_site_geometry(workspace_id: int = Query(...), db: Session = Depends(g
             "name": camera.name,
             "area": camera.area.name if camera.area else None,
             "calibration": None,
+            "functions": [{
+                "function_id": f.id,
+                "kind": f.kind.value,
+                "label": FUNCTION_LABELS[f.kind],
+                "name": f.name,
+                "enabled": f.enabled,
+                "coordinate_space": f.space.value,
+                "config": json.loads(f.config_json or "{}"),
+                "image_size": ([f.image_width, f.image_height]
+                               if f.image_width else None),
+                "zone_id": f.zone_id,
+                "status": function_status(f, camera),
+            } for f in camera.functions],
             "zones": [{
                 "zone_id": z.id, "name": z.name, "kind": z.kind.value,
                 "image_polygon": json.loads(z.image_polygon_json),
@@ -482,7 +498,7 @@ def export_site_geometry(workspace_id: int = Query(...), db: Session = Depends(g
 
     return {
         "format": "numenor.site-geometry",
-        "format_version": "1.0",
+        "format_version": "1.1",
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "conventions": {
             "world_frame": CONVENTIONS["world_frame"],
@@ -511,6 +527,22 @@ def export_site_geometry(workspace_id: int = Query(...), db: Session = Depends(g
             "x": p.x, "y": p.y, "role": p.role.value,
             "uncertainty_m": p.uncertainty_m,
         } for p in points],
+        "scene": ({
+            "name": scene.name,
+            "published": scene.published_revision is not None,
+            "published_revision": scene.published_revision,
+            "published_at": scene.published_at.isoformat() if scene.published_at else None,
+            "has_unpublished_changes": scene.has_unpublished_changes,
+            "geometry_provenance": scene_provenance(scene.objects).value,
+            "building_width_m": scene.building_width_m,
+            "building_length_m": scene.building_length_m,
+            # The published snapshot is what is live; the draft may have moved on.
+            "objects": (json.loads(scene.published_snapshot_json)["objects"]
+                        if scene.published_snapshot_json
+                        else [object_to_dict(o) for o in scene.objects]),
+            "note": ("A spatial model only. It carries no cycle times, routing, capacities or "
+                     "machine behaviour, and is not sufficient for throughput simulation."),
+        } if scene else None),
         "cameras": camera_payload,
         "relationships": [{
             "id": r.id, "kind": r.kind.value,
@@ -538,5 +570,10 @@ def export_site_geometry(workspace_id: int = Query(...), db: Session = Depends(g
             "'excluded' record states that two views have no direct association, and even then "
             "travel via other cameras remains possible.",
             "Accuracy figures apply to the area the validation points cover, not the whole view.",
+            "Function configuration is stored and exported, but no detection or tracking service "
+            "runs in this deployment. A function marked 'configured_unavailable' is not analysing "
+            "anything.",
+            "Scene geometry marked 'estimated' was drawn rather than surveyed. It organises "
+            "cameras but is not ground truth for metric validation.",
         ],
     }

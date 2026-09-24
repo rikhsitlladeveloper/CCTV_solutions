@@ -330,6 +330,132 @@ that an absent record means unknown, not impossible.
 
 ---
 
+## Factory scene
+
+The visual scene behind the commissioning workspace. One scene per workspace.
+
+| Method | Path | |
+| --- | --- | --- |
+| `GET` | `/api/scenes?workspace_id=` | List |
+| `POST` | `/api/scenes` | Create |
+| `GET`/`PATCH` | `/api/scenes/{id}` | The working draft |
+| `POST` | `/api/scenes/{id}/publish` | Snapshot the draft as the published scene |
+| `GET` | `/api/scenes/{id}/published` | The last published snapshot |
+| `POST` | `/api/scenes/{id}/objects` | Add an object |
+| `PUT` | `/api/scenes/{id}/objects` | Replace the whole working set (makes undo trivial) |
+| `PATCH`/`DELETE` | `/api/scenes/{id}/objects/{oid}` | One object |
+| `GET` | `/api/scene-palette` | Object kinds with default sizes and colours |
+| `POST` | `/api/scenes/{id}/assets` | Upload a floor plan or GLB |
+| `PUT` | `/api/scenes/{id}/assets/{aid}/scale` | Set a plan's scale from two points and a distance |
+| `PUT` | `/api/scenes/{id}/assets/{aid}/model-alignment` | Set a GLB's scale, up-axis and floor offset |
+| `GET` | `/api/scenes/{id}/assets/{aid}/file` | The stored image or model |
+| `DELETE` | `/api/scenes/{id}/assets/{aid}` | Remove an asset |
+
+Objects carry `provenance`: `estimated` (drawn) or `measured`. A scene's objects come back with the scene itself; there is no separate list
+endpoint. A scene's own `geometry_provenance` is `measured` only when every
+object in it is. A GLB is
+checked for the `glTF` magic bytes before it is stored.
+
+Draft and published are separate snapshots, so editing a scene never changes
+what Monitor mode is showing until you publish.
+
+### `POST /api/cameras/{id}/place`
+
+Visual placement. The installer gives a point, a height, a mount type and
+something to look at; no angles are typed in.
+
+```json
+{ "workspace_id": 1, "x": 12.5, "y": 0.4, "height_m": 3.5,
+  "target_x": 12.0, "target_y": 8.0, "mount_type": "wall",
+  "illustrative_hfov_deg": 78, "illustrative_range_m": 15 }
+```
+
+Returns the resulting pose, the aim described in words, the floor polygon the
+view cone covers, and `activated`.
+
+**`activated` is `false` when the camera already had a solved calibration.** The
+placement is still saved, as its own revision, but it is not switched on: a drag
+must never silently replace measured geometry. `warnings` says so in words. To
+choose it deliberately, activate the revision explicitly with
+`POST /api/cameras/{id}/calibration/revisions/{rid}/activate`. Nothing is ever
+deleted, so the move is reversible.
+
+`illustrative_hfov_deg` draws the cone and **does not touch the camera's zoom**.
+Where measured intrinsics exist they are used instead, and `fov_source` says
+which.
+
+Rejected with `422`: aiming a camera at its own mount point, which gives no
+direction.
+
+---
+
+## Camera functions
+
+What a camera is meant to do. Never blocked by missing calibration: counting and
+zone watching work on the picture.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/function-catalogue` |
+| `GET`/`POST` | `/api/cameras/{id}/functions` |
+| `PATCH`/`DELETE` | `/api/functions/{fid}` |
+
+```json
+{ "kind": "people_counting", "name": "Main doorway", "space": "image",
+  "image_width": 1280, "image_height": 720,
+  "config": { "line": [[201, 501], [1080, 478]], "direction": "a_to_b" } }
+```
+
+Geometry is stored in the frame's own native pixels together with the frame size
+it was drawn against, so a later change of stream resolution is detected rather
+than silently mis-scaling the shape.
+
+Counting needs a two-point `line` and a `direction`; zones need a `polygon` of
+three or more points. Both are rejected with `422` otherwise.
+
+Every function carries a `status`. **`processing_available` is `false` for every
+kind today** — no detection service ships with this system. Settings are stored
+and exported for one to pick up later; the API does not pretend otherwise, and
+neither does the interface.
+
+---
+
+## Readiness
+
+### `GET /api/readiness?workspace_id=`
+
+Nine capabilities, each with a state (`ready`, `partial`, `blocked`,
+`unavailable`), what it depends on, and the next step.
+
+It separates three different things that are easy to conflate: what is
+**configured**, what is **geometrically possible**, and what is **running**. A
+counting line that exists, on a camera that is mapped, with no processing
+service connected, is `configured` and `possible` and not `running`.
+
+`simulation_note` states plainly what the digital twin is and is not: a record
+of where things are, not a simulation of how they behave.
+
+---
+
+## Commissioning sessions
+
+A walk-through: the only accuracy measurement that involves the real building
+rather than the numbers the mapping was fitted to.
+
+| Method | Path |
+| --- | --- |
+| `GET`/`POST` | `/api/sessions?workspace_id=` |
+| `POST` | `/api/sessions/{id}/checkpoints` |
+| `POST` | `/api/sessions/{id}/end` |
+| `DELETE` | `/api/sessions/{id}` |
+
+Sessions come back in full from the list, checkpoints included, so there is no
+separate detail endpoint. A checkpoint records where the system thought you
+were, where you actually were, and the difference. The session's `accuracy` summary counts only checkpoints
+that carry a measured position, because the rest cannot score anything.
+
+---
+
 ## Site geometry export
 
 ### `GET /api/export/site-geometry?workspace_id=`

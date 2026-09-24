@@ -196,8 +196,9 @@ export default function DashboardPage() {
               metres. No floor plan needed.
             </p>
             <div className="row" style={{ justifyContent: "center" }}>
-              <Link className="btn btn-primary" to="/setup">Start guided setup</Link>
-              <Link className="btn" to="/cameras/new">Just register a camera</Link>
+              <Link className="btn btn-primary" to="/workspace">Open the workspace</Link>
+              <Link className="btn" to="/setup">Guided setup</Link>
+              <Link className="btn" to="/cameras/new">Register a camera</Link>
             </div>
           </div>
         ) : cameras.length === 0 ? (

@@ -201,6 +201,9 @@ class Camera(Base):
     zones: Mapped[list["MonitoredZone"]] = relationship(
         back_populates="camera", cascade="all, delete-orphan", order_by="MonitoredZone.name"
     )
+    functions: Mapped[list["CameraFunction"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan", order_by="CameraFunction.id"
+    )
 
     @property
     def active_intrinsics(self) -> "CameraIntrinsics | None":
@@ -505,6 +508,13 @@ class CalibrationRevision(Base):
     approx_vfov_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
     approx_range_m: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # How a visually-placed camera was mounted, and the floor point it was aimed
+    # at. Orientation is derived from these, so the interaction can be replayed.
+    mount_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    aim_target_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aim_target_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aim_target_z: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # The floor polygon the reference points actually cover. Projections outside
     # it are extrapolation and are flagged as such.
     coverage_polygon_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -652,3 +662,271 @@ class CameraRelationship(Base):
     camera_b: Mapped["Camera"] = relationship(foreign_keys=[camera_b_id])
     zone_a: Mapped["MonitoredZone | None"] = relationship(foreign_keys=[zone_a_id])
     zone_b: Mapped["MonitoredZone | None"] = relationship(foreign_keys=[zone_b_id])
+
+
+# =====================================================================
+# Factory scene: the spatial representation the cameras are commissioned into
+# =====================================================================
+#
+# The scene is a *spatial* model — where the walls, machines and walkways are.
+# It is not a simulation: it carries no cycle times, routing or machine states,
+# and camera placement alone does not make throughput simulation possible.
+
+
+class GeometryProvenance(str, enum.Enum):
+    """Where a dimension came from. Never conflated."""
+    estimated = "estimated"     # drawn, paced out, read off a drawing
+    measured = "measured"       # surveyed with a tape or laser
+
+
+class SceneObjectKind(str, enum.Enum):
+    wall = "wall"
+    door = "door"
+    column = "column"
+    machine = "machine"
+    rack = "rack"
+    workstation = "workstation"
+    conveyor = "conveyor"
+    walkway = "walkway"
+    restricted_area = "restricted_area"
+
+
+class SceneAssetKind(str, enum.Enum):
+    floor_plan = "floor_plan"
+    model_3d = "model_3d"
+
+
+class MountType(str, enum.Enum):
+    wall = "wall"
+    ceiling = "ceiling"
+    column = "column"
+    free = "free"
+
+
+class FunctionKind(str, enum.Enum):
+    people_counting = "people_counting"
+    product_counting = "product_counting"
+    restricted_zone = "restricted_zone"
+    ppe_monitoring = "ppe_monitoring"
+    workstation_occupancy = "workstation_occupancy"
+    twin_positions = "twin_positions"
+    cross_camera_tracking = "cross_camera_tracking"
+
+
+class ConfigSpace(str, enum.Enum):
+    """Whether a function's coordinates live in the picture or on the floor."""
+    image = "image"
+    world = "world"
+
+
+class Scene(Base):
+    """One editable scene per workspace, plus the snapshot that is live.
+
+    Editing the scene changes the draft. Nothing that is running sees those
+    edits until they are published, so an installer can rearrange the model
+    without disturbing an active configuration.
+    """
+
+    __tablename__ = "scenes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    coordinate_system_id: Mapped[int] = mapped_column(
+        ForeignKey("coordinate_systems.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(160))
+    building_width_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    building_length_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Worst provenance among the objects: a scene is only as trustworthy as
+    # its least-measured dimension.
+    geometry_provenance: Mapped[GeometryProvenance] = mapped_column(
+        Enum(GeometryProvenance, native_enum=False), default=GeometryProvenance.estimated
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    draft_revision: Mapped[int] = mapped_column(Integer, default=1)
+    draft_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+    published_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # A frozen copy of the objects as they were when published.
+    published_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    coordinate_system: Mapped["CoordinateSystem"] = relationship()
+    objects: Mapped[list["SceneObject"]] = relationship(
+        back_populates="scene", cascade="all, delete-orphan", order_by="SceneObject.id"
+    )
+    assets: Mapped[list["SceneAsset"]] = relationship(
+        back_populates="scene", cascade="all, delete-orphan"
+    )
+
+    @property
+    def has_unpublished_changes(self) -> bool:
+        return self.published_revision != self.draft_revision
+
+
+class SceneObject(Base):
+    """A box, polygon or line in the factory scene, in world metres."""
+
+    __tablename__ = "scene_objects"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scene_id: Mapped[int] = mapped_column(ForeignKey("scenes.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[SceneObjectKind] = mapped_column(Enum(SceneObjectKind, native_enum=False))
+    name: Mapped[str] = mapped_column(String(160))
+
+    # Box-like objects: centre, footprint and height.
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    z: Mapped[float] = mapped_column(Float, default=0.0)          # base height above the floor
+    rotation_deg: Mapped[float] = mapped_column(Float, default=0.0)
+    width_m: Mapped[float] = mapped_column(Float, default=1.0)
+    depth_m: Mapped[float] = mapped_column(Float, default=1.0)
+    height_m: Mapped[float] = mapped_column(Float, default=1.0)
+
+    # Polygonal or linear objects (walkways, restricted areas, walls drawn as runs).
+    points_json: Mapped[str | None] = mapped_column(Text, nullable=True)   # [[x, y], ...]
+
+    provenance: Mapped[GeometryProvenance] = mapped_column(
+        Enum(GeometryProvenance, native_enum=False), default=GeometryProvenance.estimated
+    )
+    colour: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    scene: Mapped[Scene] = relationship(back_populates="objects")
+
+
+class SceneAsset(Base):
+    """A floor-plan image or a 3D model used as scene backdrop or reference."""
+
+    __tablename__ = "scene_assets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scene_id: Mapped[int] = mapped_column(ForeignKey("scenes.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[SceneAssetKind] = mapped_column(Enum(SceneAssetKind, native_enum=False))
+    file_path: Mapped[str] = mapped_column(String(255))
+    original_filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(80))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Floor-plan alignment into world metres.
+    width_px: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height_px: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metres_per_pixel: Mapped[float | None] = mapped_column(Float, nullable=True)
+    origin_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    origin_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rotation_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Imported model: how its own units and axes map onto the world frame.
+    model_scale: Mapped[float | None] = mapped_column(Float, nullable=True)
+    model_up_axis: Mapped[str | None] = mapped_column(String(4), nullable=True)   # "Y" or "Z"
+    model_floor_offset_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    model_rotation_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # An imported mesh is reference geometry. Nothing extracts editable objects
+    # from it, so it is never treated as measured.
+    is_reference_only: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    scene: Mapped[Scene] = relationship(back_populates="assets")
+
+
+class CameraFunction(Base):
+    """What a camera is meant to do, and whether anything can actually do it.
+
+    Configuration is stored here regardless of whether a processing service
+    exists. When none does, the camera reads "Configured - processing
+    unavailable" rather than implying it is running.
+    """
+
+    __tablename__ = "camera_functions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[FunctionKind] = mapped_column(Enum(FunctionKind, native_enum=False))
+    name: Mapped[str] = mapped_column(String(160))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Whether the geometry below is in picture pixels or world metres. Image-space
+    # counting works with no calibration at all.
+    space: Mapped[ConfigSpace] = mapped_column(
+        Enum(ConfigSpace, native_enum=False), default=ConfigSpace.image
+    )
+    config_json: Mapped[str] = mapped_column(Text, default="{}")
+    # The image geometry any pixel coordinates belong to.
+    image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    zone_id: Mapped[int | None] = mapped_column(
+        ForeignKey("monitored_zones.id", ondelete="SET NULL"), nullable=True
+    )
+    scene_object_id: Mapped[int | None] = mapped_column(
+        ForeignKey("scene_objects.id", ondelete="SET NULL"), nullable=True
+    )
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    camera: Mapped["Camera"] = relationship(back_populates="functions")
+    zone: Mapped["MonitoredZone | None"] = relationship()
+    scene_object: Mapped[SceneObject | None] = relationship()
+
+
+class CommissioningSession(Base):
+    """A timestamped walk-through: what was checked, where, and what was seen."""
+
+    __tablename__ = "commissioning_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    coordinate_system_id: Mapped[int] = mapped_column(
+        ForeignKey("coordinate_systems.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(160))
+    camera_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    operator: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    checkpoints: Mapped[list["SessionCheckpoint"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan",
+        order_by="SessionCheckpoint.recorded_at",
+    )
+
+
+class SessionCheckpoint(Base):
+    """One recorded observation during a walk-through.
+
+    ``measured_x``/``measured_y`` are a surveyed position when the installer has
+    one; without them a checkpoint is an observation, not an accuracy figure.
+    """
+
+    __tablename__ = "session_checkpoints"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("commissioning_sessions.id", ondelete="CASCADE"), index=True
+    )
+    camera_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cameras.id", ondelete="SET NULL"), nullable=True
+    )
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    label: Mapped[str] = mapped_column(String(200))
+
+    pixel_u: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pixel_v: Mapped[float | None] = mapped_column(Float, nullable=True)
+    image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    projected_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    projected_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    measured_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    measured_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    error_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    observation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    session: Mapped[CommissioningSession] = relationship(back_populates="checkpoints")

@@ -8,6 +8,10 @@ export interface ImageMark {
   v: number;
   label: string;
   role?: "fit" | "holdout";
+  /** Overrides the role colour, so a mark can be colour-matched to the scene. */
+  colour?: string;
+  /** Shown inside the ring instead of beside it, for numbered landmarks. */
+  index?: number;
   /** Where the current calibration says this point should appear. */
   projected?: [number, number] | null;
   errorPx?: number | null;
@@ -151,7 +155,8 @@ export default function CameraImagePicker({
             {marks.map((mark) => {
               const [sx, sy] = toScreen(mark.u, mark.v);
               const selected = mark.id === selectedId;
-              const colour = mark.role === "holdout" ? "#9a6207" : "#1d4ed8";
+              const colour = mark.colour ?? (mark.role === "holdout" ? "#9a6207" : "#1d4ed8");
+              const r = mark.index != null ? (selected ? 11 : 9) : (selected ? 8 : 6);
               return (
                 <g key={String(mark.id)} style={{ pointerEvents: "all", cursor: "pointer" }}
                    onClick={(e) => { e.stopPropagation(); onSelect?.(mark.id); }}>
@@ -164,15 +169,22 @@ export default function CameraImagePicker({
                       </>
                     );
                   })()}
-                  <circle cx={sx} cy={sy} r={selected ? 8 : 6} fill="none"
+                  <circle cx={sx} cy={sy} r={r}
+                          fill={mark.index != null ? colour : "none"}
+                          fillOpacity={mark.index != null ? 0.85 : 1}
                           stroke={colour} strokeWidth={selected ? 3 : 2} />
-                  <circle cx={sx} cy={sy} r={1.6} fill={colour} />
-                  <text x={sx + 10} y={sy - 8} fontSize={11} fill="#fff"
+                  {mark.index != null ? (
+                    <text x={sx} y={sy + 4} fontSize={11} fontWeight={700} fill="#fff"
+                          textAnchor="middle">{mark.index}</text>
+                  ) : (
+                    <circle cx={sx} cy={sy} r={1.6} fill={colour} />
+                  )}
+                  <text x={sx + r + 4} y={sy - 8} fontSize={11} fill="#fff"
                         stroke="#101620" strokeWidth={3} paintOrder="stroke">
                     {mark.label}{mark.role === "holdout" ? " (held out)" : ""}
                   </text>
                   {mark.errorPx != null && (
-                    <text x={sx + 10} y={sy + 6} fontSize={10} fill="#ffb3ad"
+                    <text x={sx + r + 4} y={sy + 6} fontSize={10} fill="#ffb3ad"
                           stroke="#101620" strokeWidth={3} paintOrder="stroke">
                       {mark.errorPx.toFixed(1)} px
                     </text>
