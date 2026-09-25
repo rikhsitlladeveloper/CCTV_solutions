@@ -11,9 +11,13 @@ import base64
 import hashlib
 import logging
 import secrets
+import socket
+import time
+import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from urllib.parse import unquote
 
 import httpx
 
@@ -291,3 +295,113 @@ def build_client(host: str, port: int | None, path: str | None,
         return OnvifClient(host, port or 80, path or "/onvif/device_service", username, password)
     except HostNotAllowed as exc:
         raise OnvifError("unreachable", str(exc)) from exc
+
+
+# =====================================================================
+# WS-Discovery
+# =====================================================================
+
+WS_DISCOVERY_GROUP = "239.255.255.250"
+WS_DISCOVERY_PORT = 3702
+
+_PROBE = """<?xml version="1.0" encoding="UTF-8"?>
+<e:Envelope xmlns:e="http://www.w3.org/2003/05/soap-envelope"
+            xmlns:w="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+            xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery"
+            xmlns:dn="http://www.onvif.org/ver10/network/wsdl">
+  <e:Header>
+    <w:MessageID>uuid:{message_id}</w:MessageID>
+    <w:To e:mustUnderstand="true">urn:schemas-xmlsoap-org:ws:2005:04:discovery</w:To>
+    <w:Action e:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</w:Action>
+  </e:Header>
+  <e:Body>
+    <d:Probe><d:Types>dn:NetworkVideoTransmitter</d:Types></d:Probe>
+  </e:Body>
+</e:Envelope>"""
+
+
+@dataclass
+class DiscoveredDevice:
+    """A device that answered a discovery probe. Nothing here is authenticated."""
+
+    address: str                  # the IP the reply came from
+    xaddrs: list[str]             # device service URLs the device advertised
+    scopes: list[str]
+    types: str | None
+    name: str | None              # parsed from an onvif scope, when present
+    hardware: str | None
+
+
+def _scope_value(scopes: list[str], key: str) -> str | None:
+    prefix = f"onvif://www.onvif.org/{key}/"
+    for scope in scopes:
+        if scope.startswith(prefix):
+            return unquote(scope[len(prefix):]) or None
+    return None
+
+
+def discover(timeout: float = 4.0, interface_ip: str | None = None) -> list[DiscoveredDevice]:
+    """Ask the local network which ONVIF devices are present.
+
+    This is WS-Discovery: one multicast question that devices choose to answer.
+    It is not a port scan — no address is contacted that did not reply first,
+    and no credentials are sent or needed.
+
+    Timeouts are normal. A network that blocks multicast, or a camera on a
+    different VLAN, simply produces nothing; that means "not found this way",
+    never "not present", and the caller is expected to say so.
+    """
+    message_id = str(uuid.uuid4())
+    payload = _PROBE.format(message_id=message_id).encode("utf-8")
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        if interface_ip:
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                            socket.inet_aton(interface_ip))
+            sock.bind((interface_ip, 0))
+        else:
+            sock.bind(("", 0))
+        sock.settimeout(0.5)
+        # Sent more than once: UDP is lossy and a dropped probe looks exactly
+        # like an absent camera.
+        for _ in range(2):
+            sock.sendto(payload, (WS_DISCOVERY_GROUP, WS_DISCOVERY_PORT))
+
+        deadline = time.monotonic() + timeout
+        found: dict[str, DiscoveredDevice] = {}
+        while time.monotonic() < deadline:
+            try:
+                data, addr = sock.recvfrom(65535)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            device = _parse_probe_match(data, addr[0])
+            if device and device.address not in found:
+                found[device.address] = device
+        return sorted(found.values(), key=lambda d: d.address)
+    finally:
+        sock.close()
+
+
+def _parse_probe_match(data: bytes, source_ip: str) -> DiscoveredDevice | None:
+    try:
+        root = ET.fromstring(data.decode("utf-8", "replace"))
+    except ET.ParseError:
+        return None
+    match = next(iter(_find_all(root, "ProbeMatch")), None)
+    if match is None:
+        return None
+    xaddrs = (_find_text(match, "XAddrs") or "").split()
+    scopes = (_find_text(match, "Scopes") or "").split()
+    return DiscoveredDevice(
+        address=source_ip,
+        xaddrs=xaddrs,
+        scopes=scopes,
+        types=_find_text(match, "Types"),
+        name=_scope_value(scopes, "name"),
+        hardware=_scope_value(scopes, "hardware"),
+    )

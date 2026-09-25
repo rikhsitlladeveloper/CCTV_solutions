@@ -24,6 +24,7 @@ from .media import preview_manager
 from .netguard import HostNotAllowed
 from .routers import (
     auth, calibration, cameras, coordinates, factorymap, floorplans, graph, locations,
+    monitoring,
     preview, scenes, setup,
 )
 from .security import ensure_operator
@@ -140,6 +141,7 @@ app.include_router(factorymap.router)
 app.include_router(setup.router)
 app.include_router(graph.router)
 app.include_router(scenes.router)
+app.include_router(monitoring.router)
 
 
 @app.get("/api/health")

@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from app.db import SessionLocal, init_db          # noqa: E402
 from app.demo_data import remove_demo_data, seed_demo_data   # noqa: E402
+from app.demo_events import remove_sample_events, seed_sample_events   # noqa: E402
 from app.demo_setup import remove_demo_setup, seed_demo_setup   # noqa: E402
 
 
@@ -27,6 +28,8 @@ def main() -> int:
     parser.add_argument("--which", choices=("setup", "pose", "both"), default="setup",
                         help="'setup' seeds the guided floor-mapping example (default), "
                              "'pose' the full 3D example, 'both' seeds each")
+    parser.add_argument("--events", action="store_true",
+                        help="also seed sample incident rows for the configured analytics")
     args = parser.parse_args()
 
     init_db()
@@ -38,6 +41,9 @@ def main() -> int:
         if args.which in ("pose", "both"):
             results["full_pose"] = (remove_demo_data(db) if args.remove
                                     else seed_demo_data(db))
+        if args.events:
+            results["sample_events"] = (remove_sample_events(db) if args.remove
+                                        else seed_sample_events(db))
     print(json.dumps(results, indent=2))
     return 0
 

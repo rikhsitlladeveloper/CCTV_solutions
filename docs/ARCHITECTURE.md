@@ -36,6 +36,8 @@ external dependency at runtime — no cloud service, no message broker, no GPU.
 | --- | ---: | --- |
 | `geometry.py` | ~540 | Frames, rotations, poses, ray/plane intersection. **The single source of every convention.** |
 | `floormapping.py` | 500 | The guided pipeline: image-to-floor homography, coverage, held-out scoring. |
+| `monitoring.py` | 319 | Monitoring lifecycle, region validity, plain-language rules, the overview roll-up. |
+| `demo_events.py` | 121 | Sample incident rows, always flagged and never produced by inference. |
 | `scene.py` | 408 | The factory scene: object palette and footprints, visual placement to pose, function availability, readiness. |
 | `relationships.py` | 240 | Graph validation, overlap suggestion, polygon intersection. |
 | `markers.py` | 220 | Optional ArUco assistance; proposes matches, never asserts positions. |
@@ -232,6 +234,9 @@ React 19 + TypeScript, built by Vite, served as static files by the backend.
 
 | Area | Module | Lines |
 | --- | --- | ---: |
+| Factory overview | `pages/OverviewPage.tsx` | ~324 |
+| Guided camera setup | `pages/CameraSetupWizard.tsx` | ~1180 |
+| Incident inbox | `pages/IncidentsPage.tsx` | ~393 |
 | Commissioning workspace | `pages/WorkspacePage.tsx` | ~1816 |
 | Align live view | `pages/AlignPage.tsx` | ~623 |
 | Capability readiness | `pages/ReadinessPage.tsx` | ~389 |
@@ -248,6 +253,7 @@ React 19 + TypeScript, built by Vite, served as static files by the backend.
 | Image point picker | `components/CameraImagePicker.tsx` | 216 |
 | Scene canvas, 2D (Konva) | `components/SceneCanvas2D.tsx` | 517 |
 | Scene view, 3D (Three.js) | `components/SceneView3D.tsx` | 297 |
+| Region drawing (areas, lines, exclusions) | `components/RegionEditor.tsx` | 475 |
 | Line and zone drawing | `components/PictureGeometryEditor.tsx` | 224 |
 
 Three rendering technologies, each chosen for its job: SVG for the floor-plan
@@ -256,6 +262,31 @@ continuous pan/zoom), Three.js for the 3D view.
 
 `Scene3D` is lazy-loaded — Three.js is roughly 250 kB gzipped and most sessions
 never open it, so the main bundle stays at ~222 kB gzipped.
+
+### Three things that are never conflated
+
+The whole data model leans on keeping these apart, and the interface follows it.
+
+* **Connected** is not **monitored**. A camera can stream perfectly and be
+  analysing nothing. `camera_health` counts them separately.
+* **Configured** is not **running**. An analytic with a valid region is stored
+  configuration. `AVAILABLE_PROCESSING` is empty, so nothing runs, and every
+  status says so.
+* **Reviewed** is not **acknowledged**. Whether a detection was correct and
+  whether a person handled it are separate columns with separate authors.
+
+A fourth follows from the same instinct: **absent is not zero**. A count that
+cannot be produced is `null` with a reason attached, because a zero is a claim
+about the world.
+
+### Where the lifecycle lives
+
+`MonitoringState` has five values but only two stored fields
+(`monitoring_requested`, `monitoring_active`). Draft, connected and configured
+are computed from evidence — the last connection test, the saved analytics and
+their region validity — so no stored flag can drift out of step with the thing
+it describes. Activation is guarded by `activation_blockers`, which returns the
+specific reasons rather than a boolean.
 
 ### Installer vocabulary
 

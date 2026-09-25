@@ -8,6 +8,114 @@ problem. The one rule worth remembering: **the system only knows what you
 measure.** Clicking a spot on a grid records where you *say* something is; it
 does not measure anything.
 
+## Day to day: the three screens
+
+| Screen | Who uses it | What it answers |
+| --- | --- | --- |
+| **Factory overview** | supervisors | Which cameras are up? What is waiting for someone? |
+| **Camera setup** | installers | Getting one camera from a box on the wall to monitoring. |
+| **Incidents** | supervisors, shift leads | What was reported, and what did we make of it? |
+
+### Factory overview
+
+Six tiles, then the factory itself. The tiles keep two things apart that are
+easy to blur:
+
+* **Cameras online** is about the video connection.
+* **Monitoring active** is about analytics actually switched on.
+
+A camera can stream perfectly and be analysing nothing, so those numbers are
+often different and are never added together.
+
+**Production count reads "Unavailable", not 0.** No detection service ships
+with this system, so there is nothing to count. A zero would say the line
+produced nothing, which is a different claim entirely, and the tile explains
+which it is.
+
+If there is no floor plan, cameras are grouped by building and area instead.
+Nothing is blocked by a missing plan — a plan only adds a picture to point at.
+
+Click any camera, on the plan or in a list, and the panel on the right shows its
+preview, its analytics, whether it is reachable, and a **Configure** button.
+
+### Camera setup
+
+Five steps, and you can leave at any point: progress is saved on the server, not
+in your browser, so a reload, a different machine or a different person picks up
+exactly where you left off.
+
+**1. Connect.** Either search the network — a multicast question ONVIF cameras
+choose to answer — or type an address. Use an address for a camera on another
+VLAN or an NVR channel; discovery only finds devices on this network segment,
+and finding nothing means "not found this way", not "not present".
+
+Failures are named rather than lumped together: *the login was refused*, *the
+camera did not answer*, *logged in but the video did not decode*. Each says what
+to check.
+
+**2. Name and assign.** A name someone on the floor would recognise, and the
+building, floor and area. An area is required before a camera can be activated,
+because events have to be somewhere.
+
+**3. Analytics.** Pick what it should watch for, then draw it straight onto the
+camera picture: a monitored area, a counting line with a direction arrow, or an
+exclusion region for parts of the picture to ignore. Select, drag, drag a
+corner, undo, delete. Shapes are stored in the picture's own pixels, so
+resizing the window or a different screen moves nothing.
+
+Then set the schedule, how long before it counts, and the cooldown. The step
+shows the rule back to you in plain words before you save:
+
+> During Shift A, create an event when a person remains inside Conveyor Access
+> for more than 2 seconds. Then wait 30 seconds before reporting it again.
+
+That exact sentence is stored on every event the rule produces, so editing the
+rule later cannot rewrite the reason a past event fired.
+
+**4. Factory map — optional.** Two explicit choices. *Camera-only analytics* is
+complete on its own: events say which camera and which region. *Locate
+observations on the factory map* turns a position in the picture into a place on
+the floor, and needs at least four well-spread floor points matched between the
+picture and the plan.
+
+Dropping a camera icon on a map is **not** calibration. It shows roughly where
+the camera hangs; it does not let the system work out where anything it sees
+actually is. Only matched floor points do that.
+
+**5. Validate and activate.** A summary, then test mode, then the switch.
+
+Test mode shows the live picture with your regions against it. It does **not**
+draw detections, tracks or counts — no processing service is connected, and the
+system will not draw boxes it did not compute.
+
+Activation is refused, with the specific reasons, if the connection was never
+proven, there are no analytics, a region is unusable, or no area is assigned.
+It is **not** blocked by map calibration.
+
+States: Draft → Connected → Configured → Validation pending → Active.
+
+### Incidents
+
+A list and a detail panel, with filters for time, area, camera, type and status.
+
+Two separate questions, and the buttons keep them apart:
+
+* **Confirm / Dismiss** — *was the detection correct?*
+* **Acknowledge** — *has somebody seen or handled it?*
+
+You can dismiss and acknowledge the same event: it was wrong, and you dealt with
+it. Both are recorded with who said so and when, and the counters on the
+overview read the same records.
+
+Event text states what was observed — *"No product crossed the line for 3
+minutes"* — and never what it meant. *"The machine has stopped"* is a conclusion,
+and not the system's to draw.
+
+Rows marked **sample** are seeded demonstration data. Nothing in this deployment
+was produced by inference.
+
+---
+
 ## Two ways through, same data underneath
 
 | | **Workspace** | **Guided setup** |

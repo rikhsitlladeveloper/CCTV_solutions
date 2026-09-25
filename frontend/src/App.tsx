@@ -13,6 +13,9 @@ import RelationshipsPage from "./pages/RelationshipsPage";
 import ReadinessPage from "./pages/ReadinessPage";
 import SetupPage from "./pages/SetupPage";
 import AlignPage from "./pages/AlignPage";
+import CameraSetupWizard from "./pages/CameraSetupWizard";
+import IncidentsPage from "./pages/IncidentsPage";
+import OverviewPage from "./pages/OverviewPage";
 import WorkspacePage from "./pages/WorkspacePage";
 
 export default function App() {
@@ -45,9 +48,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <TopBar operator={operator} onSignOut={signOut} />
+      <Sidebar operator={operator} onSignOut={signOut} />
+      <div className="app-main">
       <Routes>
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/" element={<OverviewPage />} />
+        <Route path="/cameras" element={<DashboardPage />} />
+        <Route path="/setup-camera" element={<CameraSetupWizard />} />
+        <Route path="/incidents" element={<IncidentsPage />} />
         <Route path="/cameras/new" element={<RegisterWizardPage />} />
         <Route path="/cameras/:id" element={<CameraDetailPage />} />
         <Route path="/cameras/:id/calibration" element={<CameraCalibrationPage />} />
@@ -61,36 +68,64 @@ export default function App() {
         <Route path="/floor-plans" element={<FloorPlanEditorPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </div>
     </div>
   );
 }
 
-function TopBar({ operator, onSignOut }: { operator: string; onSignOut: () => void }) {
+function Sidebar({ operator, onSignOut }: { operator: string; onSignOut: () => void }) {
   const navigate = useNavigate();
+  const [awaiting, setAwaiting] = useState<number | null>(null);
+
+  // The badge reads the same event records the incident inbox does, so the two
+  // can never disagree about how much is waiting.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => api.listEvents({ decision: "unreviewed", limit: 1 })
+      .then((page) => { if (!cancelled) setAwaiting(page.total); })
+      .catch(() => { if (!cancelled) setAwaiting(null); });
+    poll();
+    const timer = window.setInterval(poll, 60000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
+
   return (
-    <header className="topbar">
+    <aside className="sidebar">
       <div className="brand">
         <span className="brand-mark" aria-hidden="true">N</span>
         <span>Numenor</span>
-        <span className="brand-sub">Camera Setup</span>
       </div>
-      <nav className="topnav">
-        <NavLink to="/workspace">Workspace</NavLink>
-        <NavLink to="/" end>Cameras</NavLink>
-        <NavLink to="/setup">Guided setup</NavLink>
-        <NavLink to="/relationships">Connections</NavLink>
+
+      <nav aria-label="Main">
+        <span className="nav-group">Monitor</span>
+        <NavLink to="/" end>Factory overview</NavLink>
+        <NavLink to="/incidents">
+          Incidents
+          {awaiting ? <span className="nav-count">{awaiting}</span> : null}
+        </NavLink>
+
+        <span className="nav-group">Set up</span>
+        <NavLink to="/setup-camera">Camera setup</NavLink>
+        <NavLink to="/cameras">All cameras</NavLink>
+        <NavLink to="/workspace">Factory scene</NavLink>
+        <NavLink to="/align">Align live view</NavLink>
+
+        <span className="nav-group">Advanced</span>
+        <NavLink to="/setup">Guided calibration</NavLink>
+        <NavLink to="/relationships">Camera links</NavLink>
         <NavLink to="/readiness">Readiness</NavLink>
       </nav>
-      <div className="topbar-spacer" />
-      <div className="topbar-user">
+
+      <div className="sidebar-foot">
         <span className="badge badge-neutral" title="All processing stays on this host">
           <span aria-hidden="true">⌂</span>On-premise
         </span>
         <span>{operator}</span>
-        <button className="btn btn-sm btn-ghost" onClick={() => { onSignOut(); navigate("/"); }} type="button">
+        <button className="btn btn-sm btn-ghost" type="button"
+                onClick={() => { onSignOut(); navigate("/"); }}>
           Sign out
         </button>
       </div>
-    </header>
+    </aside>
   );
 }

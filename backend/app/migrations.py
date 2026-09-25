@@ -135,6 +135,62 @@ def _m009_scene_indexes(conn: Connection) -> None:
     _create_index(conn, "ix_checkpoints_session", "session_checkpoints", ["session_id"])
 
 
+def _m010_monitoring_events_and_progress(conn: Connection) -> None:
+    """Monitoring lifecycle flags, the event log and saved wizard progress.
+
+    The two new tables are created by ``create_all`` on a fresh install; this
+    creates them on an existing one, where ``create_all`` has already run
+    against the older metadata.
+    """
+    for column, ddl in [
+        ("monitoring_requested", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("monitoring_active", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("monitoring_activated_at", "DATETIME"),
+    ]:
+        _add_column(conn, "cameras", column, ddl)
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY,
+            camera_id INTEGER NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
+            function_id INTEGER REFERENCES camera_functions(id) ON DELETE SET NULL,
+            kind VARCHAR(40) NOT NULL,
+            started_at DATETIME NOT NULL,
+            duration_s FLOAT,
+            rule_summary TEXT NOT NULL,
+            facts_json TEXT NOT NULL DEFAULT '[]',
+            snapshot_path VARCHAR(255),
+            clip_path VARCHAR(255),
+            overlay_json TEXT,
+            image_width INTEGER,
+            image_height INTEGER,
+            decision VARCHAR(20) NOT NULL DEFAULT 'unreviewed',
+            decided_by VARCHAR(120),
+            decided_at DATETIME,
+            acknowledged_by VARCHAR(120),
+            acknowledged_at DATETIME,
+            notes TEXT,
+            is_sample BOOLEAN NOT NULL DEFAULT 0,
+            created_at DATETIME
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS setup_progress (
+            id INTEGER PRIMARY KEY,
+            camera_id INTEGER NOT NULL UNIQUE REFERENCES cameras(id) ON DELETE CASCADE,
+            step VARCHAR(40) NOT NULL DEFAULT 'connect',
+            draft_json TEXT NOT NULL DEFAULT '{}',
+            completed_json TEXT NOT NULL DEFAULT '[]',
+            updated_at DATETIME,
+            updated_by VARCHAR(120)
+        )
+    """))
+    _create_index(conn, "ix_events_camera_started", "events", ["camera_id", "started_at"])
+    _create_index(conn, "ix_events_decision", "events", ["decision", "started_at"])
+    _create_index(conn, "ix_events_sample", "events", ["is_sample"])
+    _create_index(conn, "ix_setup_progress_camera", "setup_progress", ["camera_id"])
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "camera coordinate system reference", _m001_camera_coordinate_system),
     Migration(2, "floor plan world alignment", _m002_floor_plan_world_alignment),
@@ -145,6 +201,8 @@ MIGRATIONS: list[Migration] = [
     Migration(7, "zone and relationship indexes", _m007_relationship_indexes),
     Migration(8, "visual placement mount and aim", _m008_visual_placement),
     Migration(9, "scene and function indexes", _m009_scene_indexes),
+    Migration(10, "monitoring lifecycle, events and setup progress",
+              _m010_monitoring_events_and_progress),
 ]
 
 SCHEMA_VERSION = max(m.version for m in MIGRATIONS)

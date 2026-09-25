@@ -330,6 +330,136 @@ that an absent record means unknown, not impossible.
 
 ---
 
+## Factory overview
+
+### `GET /api/overview?building_id=&floor_id=&hours=`
+
+Everything the supervisor's main screen needs, in one request: camera health,
+events awaiting review, production counts, cameras grouped by building and
+area, and any floor plans.
+
+`health` counts **connected** and **monitoring** separately and never adds them
+together — a camera can stream perfectly and be analysing nothing.
+
+`production.value` is `null` whenever the number cannot honestly be produced,
+with `unavailable_reason` saying why. It is never `0`: a zero would assert the
+line produced nothing, which is a different and much stronger claim.
+
+`groups` is always populated, so a site with no floor plan still has a usable
+structure to browse rather than a flat list of thirty cameras.
+
+---
+
+## Events
+
+An event is something an analytic reported. **Nothing in this deployment
+produces them**: no inference service ships with the system. Rows arrive either
+from an external processing service through the ingest endpoint, or as sample
+data seeded by an explicit command.
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/events?camera_id=&area_id=&kind=&decision=&acknowledged=&since_hours=&include_samples=&limit=&offset=` |
+| `GET` | `/api/events/{id}` |
+| `POST` | `/api/events` |
+| `POST` | `/api/events/{id}/review` |
+| `POST` | `/api/events/{id}/acknowledge` |
+| `GET` | `/api/events/{id}/snapshot` |
+
+### Two independent questions
+
+Review and acknowledgement are stored and returned separately, because they
+answer different things and different people ask them:
+
+* **`decision`** — `unreviewed`, `confirmed` or `dismissed`. *Was the detection
+  correct?*
+* **`acknowledged_at` / `acknowledged_by`** — *Has somebody seen or handled it?*
+
+An event can be dismissed and acknowledged at once: it was wrong, and a person
+dealt with it. Reviewing never implies acknowledging, and acknowledging never
+changes a decision.
+
+### Ingest
+
+```json
+{ "camera_id": 4, "function_id": 2, "kind": "restricted_entry",
+  "started_at": "2026-09-25T13:24:08Z", "duration_s": 4.5,
+  "facts": ["A person was inside Conveyor Access for 4.5 s."] }
+```
+
+The rule's wording is snapshotted onto the event as `rule_summary`, so editing
+the rule afterwards cannot rewrite the reason a past event fired.
+
+`is_sample` is **not** part of the ingest contract and is always stored as
+`false`. A real service cannot mark its output as a demonstration, and a
+demonstration cannot pass itself off as real.
+
+`facts` are observations, never conclusions: *"No product crossed the line for
+3 minutes"*, not *"the machine has stopped"*.
+
+---
+
+## Monitoring lifecycle
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/api/cameras/{id}/monitoring` |
+| `POST` | `/api/cameras/{id}/monitoring/request-validation` |
+| `POST` | `/api/cameras/{id}/monitoring/activate` |
+| `POST` | `/api/cameras/{id}/monitoring/deactivate` |
+| `GET` | `/api/cameras/{id}/rule-summaries` |
+
+Five states: `draft` → `connected` → `configured` → `validation_pending` →
+`active`. The first three are **derived** from evidence that already exists — a
+passed connection test, a saved analytic with a usable region — so a stored
+flag can never contradict the thing it claims. Only the last two are stored,
+because asking for validation and going live are deliberate acts.
+
+Activation is refused with `422` and a list of `blockers` when anything is
+missing: an unproven connection, no analytics, an unusable region, or no area
+assigned. **Floor-plan calibration is deliberately not a blocker** — camera-only
+analytics are complete without one, and demanding a map would block the common
+case for no benefit.
+
+`rule-summaries` returns each analytic as one plain sentence, matching what is
+stored on any event it produces:
+
+> During Shift A, create an event when a person remains inside Conveyor Access
+> for more than 2 seconds.
+
+---
+
+## Setup progress
+
+| Method | Path |
+| --- | --- |
+| `GET` / `PUT` / `DELETE` | `/api/cameras/{id}/setup-progress` |
+
+Where an installer got to in the setup wizard: the current step, which steps are
+done, and any answers not yet committed to their real tables. Held on the server
+rather than in the browser, so progress survives a reload, a different machine,
+or a different person picking the job up.
+
+---
+
+## ONVIF discovery
+
+### `POST /api/discovery/onvif?seconds=`
+
+Multicast WS-Discovery, run on this host. It is a question devices choose to
+answer, not a scan: nothing is contacted that did not reply first, and no
+credentials are sent or needed.
+
+Devices already registered are flagged with `already_registered` and their
+camera id, so the same camera is not added twice.
+
+Finding nothing means **"not found this way"**, never "not present" — a camera
+on another VLAN, or a network that blocks multicast, simply will not answer. The
+`note` in the response says so, and the interface repeats it rather than
+implying the network is empty.
+
+---
+
 ## Factory scene
 
 The visual scene behind the commissioning workspace. One scene per workspace.

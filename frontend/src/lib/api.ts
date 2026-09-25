@@ -10,6 +10,10 @@ import type {
   Relationship, RelationshipGraph, Workspace, Zone,
 } from "./setupTypes";
 import type {
+  CameraMonitoringState, DiscoveryResult, EventPage, FactoryEvent, FactoryOverview,
+  ReviewDecision, RuleSummary, SetupProgress,
+} from "./monitoringTypes";
+import type {
   CameraFunction, CommissioningSession, FactoryScene, FunctionCatalogueEntry, PaletteItem,
   PlacementResult, Readiness, SceneAsset, SceneObject,
 } from "./sceneTypes";
@@ -393,6 +397,53 @@ export const api = {
   updateZone: (zoneId: number, body: Record<string, unknown>) =>
     request<Zone>(`/api/zones/${zoneId}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteZone: (zoneId: number) => request<void>(`/api/zones/${zoneId}`, { method: "DELETE" }),
+
+  // ---- monitoring, events and setup progress ----
+  overview: (params: { building_id?: number; floor_id?: number; hours?: number } = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v != null) q.set(k, String(v)); });
+    return request<FactoryOverview>(`/api/overview${q.toString() ? `?${q}` : ""}`);
+  },
+  listEvents: (params: Record<string, string | number | boolean | undefined> = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v != null && v !== "") q.set(k, String(v)); });
+    return request<EventPage>(`/api/events${q.toString() ? `?${q}` : ""}`);
+  },
+  getEvent: (id: number) => request<FactoryEvent>(`/api/events/${id}`),
+  reviewEvent: (id: number, body: { decision: ReviewDecision; notes?: string | null }) =>
+    request<FactoryEvent>(`/api/events/${id}/review`,
+      { method: "POST", body: JSON.stringify(body) }),
+  acknowledgeEvent: (id: number, body: { acknowledged: boolean; notes?: string | null }) =>
+    request<FactoryEvent>(`/api/events/${id}/acknowledge`,
+      { method: "POST", body: JSON.stringify(body) }),
+
+  cameraMonitoring: (cameraId: number) =>
+    request<CameraMonitoringState>(`/api/cameras/${cameraId}/monitoring`),
+  requestValidation: (cameraId: number) =>
+    request<CameraMonitoringState>(`/api/cameras/${cameraId}/monitoring/request-validation`,
+      { method: "POST" }),
+  activateMonitoring: (cameraId: number) =>
+    request<CameraMonitoringState>(`/api/cameras/${cameraId}/monitoring/activate`,
+      { method: "POST", body: JSON.stringify({ confirm: true }) }),
+  deactivateMonitoring: (cameraId: number) =>
+    request<CameraMonitoringState>(`/api/cameras/${cameraId}/monitoring/deactivate`,
+      { method: "POST" }),
+
+  getSetupProgress: (cameraId: number) =>
+    request<SetupProgress>(`/api/cameras/${cameraId}/setup-progress`),
+  saveSetupProgress: (cameraId: number,
+                      body: { step: string; draft: Record<string, unknown>; completed: string[] }) =>
+    request<SetupProgress>(`/api/cameras/${cameraId}/setup-progress`,
+      { method: "PUT", body: JSON.stringify(body) }),
+  clearSetupProgress: (cameraId: number) =>
+    request<void>(`/api/cameras/${cameraId}/setup-progress`, { method: "DELETE" }),
+
+  ruleSummaries: (cameraId: number) =>
+    request<{ camera_id: number; rules: RuleSummary[] }>(
+      `/api/cameras/${cameraId}/rule-summaries`),
+
+  discoverOnvif: (seconds = 4) =>
+    request<DiscoveryResult>(`/api/discovery/onvif?seconds=${seconds}`, { method: "POST" }),
 
   // ---- relationships ----
   relationshipGraph: (workspaceId?: number) =>

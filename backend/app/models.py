@@ -167,6 +167,14 @@ class Camera(Base):
     mounting_height_m: Mapped[float | None] = mapped_column(Float, nullable=True)
     installation_photo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Only the two deliberate steps are stored. Draft/connected/configured are
+    # derived from evidence, so they cannot disagree with it.
+    monitoring_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    monitoring_active: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    monitoring_activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     last_test_status: Mapped[TestStatus] = mapped_column(
         Enum(TestStatus, native_enum=False), default=TestStatus.untested
     )
@@ -203,6 +211,12 @@ class Camera(Base):
     )
     functions: Mapped[list["CameraFunction"]] = relationship(
         back_populates="camera", cascade="all, delete-orphan", order_by="CameraFunction.id"
+    )
+    events: Mapped[list["Event"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan", order_by="Event.started_at"
+    )
+    setup_progress: Mapped["SetupProgress | None"] = relationship(
+        back_populates="camera", cascade="all, delete-orphan", uselist=False
     )
 
     @property
@@ -930,3 +944,122 @@ class SessionCheckpoint(Base):
     observation: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     session: Mapped[CommissioningSession] = relationship(back_populates="checkpoints")
+
+
+# =====================================================================
+# Monitoring lifecycle, events and setup progress
+# =====================================================================
+
+class MonitoringState(str, enum.Enum):
+    """Where a camera has got to on the way to being monitored.
+
+    Everything up to ``configured`` is derived from evidence that already
+    exists, so it cannot drift from reality. Only the last two are stored,
+    because requesting validation and going live are deliberate acts.
+    """
+
+    draft = "draft"                              # registered, connection not proven
+    connected = "connected"                      # the backend reached it and decoded video
+    configured = "configured"                    # at least one analytic with valid geometry
+    validation_pending = "validation_pending"    # activation asked for, not signed off
+    active = "active"                            # monitoring switched on, deliberately
+
+
+class EventKind(str, enum.Enum):
+    restricted_entry = "restricted_entry"
+    line_crossing = "line_crossing"
+    station_occupancy = "station_occupancy"
+    dwell_time = "dwell_time"
+    ppe_violation = "ppe_violation"
+
+
+class ReviewDecision(str, enum.Enum):
+    """Was the detection correct? Separate from whether anyone has seen it."""
+
+    unreviewed = "unreviewed"
+    confirmed = "confirmed"        # the detection was right
+    dismissed = "dismissed"        # the detection was wrong
+
+
+class Event(Base):
+    """Something an analytic reported.
+
+    Nothing in this deployment produces these: no inference service ships with
+    the system. Rows arrive either from an external processing service through
+    the ingest endpoint, or as clearly flagged sample data. ``is_sample`` is the
+    only thing separating the two, and it is never inferred or defaulted away.
+    """
+
+    __tablename__ = "events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
+    # Which configured analytic produced it. Kept if the rule is later deleted,
+    # so an event never loses the description of why it fired.
+    function_id: Mapped[int | None] = mapped_column(
+        ForeignKey("camera_functions.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[EventKind] = mapped_column(Enum(EventKind, native_enum=False), index=True)
+
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    duration_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    #: The rule as it read when this fired, in plain language. Snapshotted so
+    #: editing the rule afterwards cannot rewrite history.
+    rule_summary: Mapped[str] = mapped_column(Text)
+    #: What was observed, as facts rather than conclusions.
+    facts_json: Mapped[str] = mapped_column(Text, default="[]")
+
+    snapshot_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    clip_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Detection boxes or tracks in the source image's own pixels.
+    overlay_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # -- review: two independent questions, never conflated ---------------
+    decision: Mapped[ReviewDecision] = mapped_column(
+        Enum(ReviewDecision, native_enum=False), default=ReviewDecision.unreviewed, index=True
+    )
+    decided_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    acknowledged_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    #: True for seeded demonstration rows. Shown, but always labelled.
+    is_sample: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    camera: Mapped["Camera"] = relationship(back_populates="events")
+    function: Mapped["CameraFunction | None"] = relationship()
+
+    @property
+    def awaiting_review(self) -> bool:
+        return self.decision == ReviewDecision.unreviewed
+
+
+class SetupProgress(Base):
+    """Where an installer got to in the camera setup wizard.
+
+    Held on the server rather than in the browser so progress survives a
+    reload, a different machine, or a different person picking the job up.
+    """
+
+    __tablename__ = "setup_progress"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(
+        ForeignKey("cameras.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    step: Mapped[str] = mapped_column(String(40), default="connect")
+    #: Answers not yet committed to their real tables, as {step: {...}}.
+    draft_json: Mapped[str] = mapped_column(Text, default="{}")
+    completed_json: Mapped[str] = mapped_column(Text, default="[]")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    camera: Mapped["Camera"] = relationship(back_populates="setup_progress")
